@@ -2,6 +2,7 @@ import os
 import asyncio
 import json
 import logging
+import pathlib
 from typing import Iterable, List, Optional, Tuple
 
 from aiohttp import web
@@ -20,6 +21,21 @@ audio_players: dict[RTCPeerConnection, MediaPlayer] = {}
 _logged_audio_in_unavailable = False
 _logged_audio_out_unavailable = False
 controller: Controller | None = None
+DISABLE_AUDIO = os.getenv("ROBOT_DISABLE_AUDIO") == "1"
+AUDIO_LATENCY_MS = int(os.getenv("ROBOT_AUDIO_LATENCY_MS", "30"))
+AUDIO_PTIME_MS = int(os.getenv("ROBOT_AUDIO_PTIME_MS", "20"))
+AUDIO_RATE = os.getenv("ROBOT_AUDIO_RATE", "16000")
+AUDIO_CHANNELS = os.getenv("ROBOT_AUDIO_CHANNELS", "1")
+
+
+def _ensure_alsa_config_env():
+    """Set ALSA_CONFIG_PATH to a common default if missing and present on disk."""
+    if os.getenv("ALSA_CONFIG_PATH"):
+        return
+    default_path = pathlib.Path("/usr/share/alsa/alsa.conf")
+    if default_path.exists():
+        os.environ["ALSA_CONFIG_PATH"] = str(default_path)
+        logger.debug("ALSA_CONFIG_PATH set to %s", default_path)
 
 
 def _get_env_audio_spec(kind: str) -> Tuple[Optional[str], Optional[str]]:
@@ -34,6 +50,10 @@ def _open_media_player(kind: str) -> Optional[MediaPlayer]:
 
     Order: env override -> pulse default -> alsa default. Logs only once on failure.
     """
+    if DISABLE_AUDIO:
+        logger.info("Audio input disabled via ROBOT_DISABLE_AUDIO=1")
+        return None
+    _ensure_alsa_config_env()
     global _logged_audio_in_unavailable
     env_dev, env_fmt = _get_env_audio_spec("input")
     attempts = []
@@ -41,9 +61,15 @@ def _open_media_player(kind: str) -> Optional[MediaPlayer]:
         attempts.append((env_dev, env_fmt, "env override"))
     attempts += [("default", "pulse", "PulseAudio default"), ("default", "alsa", "ALSA default")]
 
+    options = {
+        "audio_buffer_size": str(AUDIO_LATENCY_MS),
+        "sample_rate": AUDIO_RATE,
+        "channels": AUDIO_CHANNELS
+    }
+
     for device, fmt, label in attempts:
         try:
-            player = MediaPlayer(device, format=fmt)
+            player = MediaPlayer(device, format=fmt, options=options)
             if player.audio:
                 logger.info("Audio input ready via %s (%s,%s)", label, device, fmt)
                 return player
@@ -61,6 +87,10 @@ def _open_media_recorder(kind: str, track) -> Optional[MediaRecorder]:
 
     Order: env override -> pulse default -> alsa default.
     """
+    if DISABLE_AUDIO:
+        logger.info("Audio output disabled via ROBOT_DISABLE_AUDIO=1")
+        return None
+    _ensure_alsa_config_env()
     global _logged_audio_out_unavailable
     env_dev, env_fmt = _get_env_audio_spec("output")
     attempts = []
@@ -68,9 +98,15 @@ def _open_media_recorder(kind: str, track) -> Optional[MediaRecorder]:
         attempts.append((env_dev, env_fmt, "env override"))
     attempts += [("default", "pulse", "PulseAudio default"), ("default", "alsa", "ALSA default")]
 
+    options = {
+        "audio_buffer_size": str(AUDIO_LATENCY_MS),
+        "sample_rate": AUDIO_RATE,
+        "channels": AUDIO_CHANNELS
+    }
+
     for device, fmt, label in attempts:
         try:
-            recorder = MediaRecorder(device, format=fmt)
+            recorder = MediaRecorder(device, format=fmt, options=options)
             recorder.addTrack(track)
             logger.info("Audio output ready via %s (%s,%s)", label, device, fmt)
             return recorder
@@ -114,7 +150,22 @@ async def handle_offer(request: web.Request, camera_ids: Iterable[int]) -> web.R
 
     try:
         video_track = MultiCameraVideoTrack(camera_ids=list(camera_ids))
-        pc.addTrack(video_track)
+        sender = pc.addTrack(video_track)
+
+        # Apply optional caps if the aiortc version supports sender parameter APIs
+        max_bitrate_env = os.getenv("ROBOT_VIDEO_MAX_BITRATE")
+        max_fps_env = os.getenv("ROBOT_CAMERA_FPS")
+        if (max_bitrate_env or max_fps_env) and hasattr(sender, "getParameters") and hasattr(sender, "setParameters"):
+            params = sender.getParameters()
+            max_bitrate = int(max_bitrate_env) if max_bitrate_env else None
+            max_fps = float(max_fps_env) if max_fps_env else None
+            for enc in params.encodings or []:
+                if max_bitrate:
+                    enc.maxBitrate = max_bitrate
+                if max_fps:
+                    enc.maxFramerate = max_fps
+            if params.encodings:
+                await sender.setParameters(params)
         logger.info("Added multi-camera video track to peer connection")
     except Exception as exc:
         logger.error("Error adding video track: %s", exc)
@@ -127,7 +178,14 @@ async def handle_offer(request: web.Request, camera_ids: Iterable[int]) -> web.R
     # Add audio track from robot mic to client if available
     if audio_player and audio_player.audio:
         try:
-            pc.addTrack(audio_player.audio)
+            sender = pc.addTrack(audio_player.audio)
+            if hasattr(sender, "getParameters") and hasattr(sender, "setParameters"):
+                params = sender.getParameters()
+                for enc in params.encodings or []:
+                    enc.ptime = AUDIO_PTIME_MS
+                    enc.maxBitrate = 32000
+                if params.encodings:
+                    await sender.setParameters(params)
             audio_players[pc] = audio_player
             logger.info("Added audio track from robot microphone")
         except Exception as exc:

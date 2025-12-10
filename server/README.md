@@ -31,6 +31,7 @@ Env vars:
 - `ROBOT_CAMERA_IDS`: comma-separated camera indices (default `0,2,4`).
 - `ROBOT_AUDIO_INPUT_DEVICE` / `ROBOT_AUDIO_INPUT_FORMAT`: audio capture device/format for mic.
 - `ROBOT_AUDIO_OUTPUT_DEVICE` / `ROBOT_AUDIO_OUTPUT_FORMAT`: audio playback device/format for speakers.
+- `ROBOT_DISABLE_AUDIO`: set to `1` to skip audio setup if ALSA/Pulse devices are not available.
 
 Control messages (DataChannel `control` from client → robot):
 

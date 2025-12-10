@@ -1,6 +1,7 @@
 import cv2
 import logging
 import numpy as np
+import os
 import time
 from aiortc import VideoStreamTrack
 from av import VideoFrame
@@ -48,6 +49,12 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         self.camera_ids = camera_ids or [0, 2, 4]
         self.cameras = []
         self.last_warn = 0.0
+        self._start_time = None
+
+        # Lower defaults to reduce latency/bandwidth; override via env if needed.
+        self.width = int(os.getenv("ROBOT_CAMERA_WIDTH", "640"))
+        self.height = int(os.getenv("ROBOT_CAMERA_HEIGHT", "360"))
+        self.fps = float(os.getenv("ROBOT_CAMERA_FPS", "15"))
 
         for cam_id in self.camera_ids:
             camera = cv2.VideoCapture(cam_id, cv2.CAP_V4L2)
@@ -58,11 +65,19 @@ class MultiCameraVideoTrack(VideoStreamTrack):
 
             camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-            camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            camera.set(cv2.CAP_PROP_FPS, 30)
+            camera.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+            camera.set(cv2.CAP_PROP_FPS, self.fps)
             self.cameras.append(camera)
             logger.info("Camera %s initialized successfully", cam_id)
+
+    async def next_timestamp(self):
+        if self._start_time is None:
+            self._start_time = time.time()
+        
+        # Use wall clock time for PTS to sync with audio
+        pts = int((time.time() - self._start_time) * 90000)
+        return pts, 90000
 
     async def recv(self):
         pts, time_base = await self.next_timestamp()
@@ -83,8 +98,10 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         video_frame.time_base = time_base
         return video_frame
 
-    def _create_black_frame(self, width: int = 640, height: int = 480):
-        return np.zeros((height, width, 3), dtype=np.uint8)
+    def _create_black_frame(self, width: int | None = None, height: int | None = None):
+        w = width or self.width
+        h = height or self.height
+        return np.zeros((h, w, 3), dtype=np.uint8)
 
     def _read_frame(self, camera):
         try:
@@ -106,9 +123,9 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         while len(frames) < 3:
             frames.append(self._create_black_frame())
 
-        main_frame = cv2.resize(frames[0], (1280, 480))
-        bottom_left = cv2.resize(frames[1], (640, 480))
-        bottom_right = cv2.resize(frames[2], (640, 480))
+        main_frame = cv2.resize(frames[0], (self.width * 2, self.height))
+        bottom_left = cv2.resize(frames[1], (self.width, self.height))
+        bottom_right = cv2.resize(frames[2], (self.width, self.height))
 
         bottom_combined = np.hstack([bottom_left, bottom_right])
         composite = np.vstack([main_frame, bottom_combined])
