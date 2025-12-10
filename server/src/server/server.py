@@ -22,26 +22,32 @@ _logged_audio_in_unavailable = False
 _logged_audio_out_unavailable = False
 controller: Controller | None = None
 DISABLE_AUDIO = os.getenv("ROBOT_DISABLE_AUDIO") == "1"
-AUDIO_LATENCY_MS = int(os.getenv("ROBOT_AUDIO_LATENCY_MS", "30"))
+AUDIO_LATENCY_MS = int(os.getenv("ROBOT_AUDIO_LATENCY_MS", "20"))
 AUDIO_PTIME_MS = int(os.getenv("ROBOT_AUDIO_PTIME_MS", "20"))
-AUDIO_RATE = os.getenv("ROBOT_AUDIO_RATE", "16000")
+AUDIO_RATE = os.getenv("ROBOT_AUDIO_RATE", "8000")
 AUDIO_CHANNELS = os.getenv("ROBOT_AUDIO_CHANNELS", "1")
 
 
 def _ensure_alsa_config_env():
     """Set ALSA_CONFIG_PATH to a common default if missing and present on disk."""
-    if os.getenv("ALSA_CONFIG_PATH"):
-        return
-    default_path = pathlib.Path("/usr/share/alsa/alsa.conf")
-    if default_path.exists():
-        os.environ["ALSA_CONFIG_PATH"] = str(default_path)
-        logger.debug("ALSA_CONFIG_PATH set to %s", default_path)
+    if not os.getenv("ALSA_CONFIG_PATH"):
+        default_path = pathlib.Path("/usr/share/alsa/alsa.conf")
+        if default_path.exists():
+            os.environ["ALSA_CONFIG_PATH"] = str(default_path)
+            logger.debug("ALSA_CONFIG_PATH set to %s", default_path)
 
 
 def _get_env_audio_spec(kind: str) -> Tuple[Optional[str], Optional[str]]:
     """Return (device, format) from env for given kind ('input'|'output')."""
     dev = os.getenv(f"ROBOT_AUDIO_{kind.upper()}_DEVICE")
     fmt = os.getenv(f"ROBOT_AUDIO_{kind.upper()}_FORMAT")
+    
+    # Default to plughw:2,0/alsa if not set (hardcoded fallback per user request)
+    if not dev:
+        dev = "plughw:2,0"
+    if not fmt:
+        fmt = "alsa"
+        
     return dev, fmt
 
 
@@ -106,7 +112,9 @@ def _open_media_recorder(kind: str, track) -> Optional[MediaRecorder]:
 
     for device, fmt, label in attempts:
         try:
-            recorder = MediaRecorder(device, format=fmt, options=options)
+            # MediaRecorder with ALSA doesn't use options like audio_buffer_size/sample_rate/channels
+            # in the same way as input, and warns if they are unused.
+            recorder = MediaRecorder(device, format=fmt)
             recorder.addTrack(track)
             logger.info("Audio output ready via %s (%s,%s)", label, device, fmt)
             return recorder
@@ -212,7 +220,10 @@ async def handle_offer(request: web.Request, camera_ids: Iterable[int]) -> web.R
                 await rec.stop()
             player = audio_players.pop(pc, None)
             if player:
-                player.stop()
+                if player.audio:
+                    player.audio.stop()
+                if player.video:
+                    player.video.stop()
 
     await pc.setRemoteDescription(offer)
     answer = await pc.createAnswer()

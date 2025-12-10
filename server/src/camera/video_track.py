@@ -52,9 +52,9 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         self._start_time = None
 
         # Lower defaults to reduce latency/bandwidth; override via env if needed.
-        self.width = int(os.getenv("ROBOT_CAMERA_WIDTH", "640"))
-        self.height = int(os.getenv("ROBOT_CAMERA_HEIGHT", "360"))
-        self.fps = float(os.getenv("ROBOT_CAMERA_FPS", "15"))
+        self.width = int(os.getenv("ROBOT_CAMERA_WIDTH", "1280"))
+        self.height = int(os.getenv("ROBOT_CAMERA_HEIGHT", "720"))
+        self.fps = float(os.getenv("ROBOT_CAMERA_FPS", "30"))
 
         for cam_id in self.camera_ids:
             camera = cv2.VideoCapture(cam_id, cv2.CAP_V4L2)
