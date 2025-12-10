@@ -5,7 +5,7 @@ Build the image
 ---------------
 
 ```bash
-docker build -t teleop-cloud-server .
+docker build -f src/server/Dockerfile -t teleop-cloud-server .
 ```
 
 Run the container
