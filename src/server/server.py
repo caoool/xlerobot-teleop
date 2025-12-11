@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import ssl
 from pathlib import Path
 from typing import Iterable, List, Optional
 
@@ -16,6 +17,10 @@ from aiortc import (
 from aiortc.contrib.media import MediaRelay
 
 logger = logging.getLogger(__name__)
+# Silence noisy VP8 decoder warnings from aiortc when packets drop.
+logging.getLogger("aiortc.codecs.vpx").setLevel(logging.ERROR)
+
+DEFAULT_PORT = 443
 
 # Global state
 robot_pc: Optional[RTCPeerConnection] = None
@@ -63,6 +68,33 @@ def _get_ice_configuration() -> RTCConfiguration:
         else []
     )
     return RTCConfiguration(iceServers=ice_servers)
+
+
+def _get_bind_config() -> tuple[str, int]:
+    host = os.getenv("HOST", "0.0.0.0")
+    port_str = os.getenv("CLOUD_SERVER_PORT") or os.getenv("PORT") or str(DEFAULT_PORT)
+    try:
+        port = int(port_str)
+    except ValueError:
+        logger.warning("Invalid port '%s', falling back to %s", port_str, DEFAULT_PORT)
+        port = DEFAULT_PORT
+    return host, port
+
+
+def _build_ssl_context() -> Optional[ssl.SSLContext]:
+    cert_file = os.getenv("SSL_CERT_FILE")
+    key_file = os.getenv("SSL_KEY_FILE")
+    password = os.getenv("SSL_PASSWORD")
+
+    if not cert_file or not key_file:
+        return None
+
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(certfile=cert_file, keyfile=key_file, password=password)
+    # Disallow legacy/weak options while keeping defaults sensible.
+    ctx.options |= ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3
+    ctx.options |= ssl.OP_NO_COMPRESSION
+    return ctx
 
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -221,10 +253,23 @@ def create_app() -> web.Application:
     return app
 
 
-def run_server(host: str = "0.0.0.0", port: int = 8080):
+def run_server(host: Optional[str] = None, port: Optional[int] = None):
     logging.basicConfig(level=logging.INFO)
-    logger.info("Starting Cloud Server...")
-    web.run_app(create_app(), host=host, port=port)
+    bind_host, bind_port = _get_bind_config()
+    if host:
+        bind_host = host
+    if port:
+        bind_port = port
+
+    ssl_context = _build_ssl_context()
+    scheme = "https" if ssl_context else "http"
+    logger.info("Starting Cloud Server on %s://%s:%s", scheme, bind_host, bind_port)
+    if bind_port == 443 and not ssl_context:
+        logger.warning(
+            "Port 443 without TLS; set SSL_CERT_FILE and SSL_KEY_FILE to enable HTTPS"
+        )
+
+    web.run_app(create_app(), host=bind_host, port=bind_port, ssl_context=ssl_context)
 
 
 if __name__ == "__main__":
