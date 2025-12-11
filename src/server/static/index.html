@@ -425,6 +425,24 @@
 
             pc = new RTCPeerConnection(RTC_CONFIG);
 
+            // ICE connection monitoring for auto-recovery
+            pc.addEventListener('iceconnectionstatechange', () => {
+                console.log('ICE connection state:', pc.iceConnectionState);
+                if (pc.iceConnectionState === 'disconnected') {
+                    // Try ICE restart after brief disconnection
+                    console.log('ICE disconnected, will attempt restart if needed...');
+                    setTimeout(() => {
+                        if (pc && pc.iceConnectionState === 'disconnected') {
+                            console.log('Attempting ICE restart...');
+                            pc.restartIce();
+                        }
+                    }, 2000);
+                } else if (pc.iceConnectionState === 'failed') {
+                    console.log('ICE failed, restarting connection...');
+                    pc.restartIce();
+                }
+            });
+
             // Create Data Channel with ordered=false for lower latency control
             controlChannel = pc.createDataChannel("control", {
                 ordered: false,  // Allow out-of-order delivery for lower latency
@@ -453,15 +471,37 @@
                     updateStatus('Streaming', true);
                     video.srcObject = event.streams[0];
                     
+                    // Track state monitoring for freeze detection
+                    event.track.onended = () => {
+                        console.warn('Video track ended');
+                        updateStatus('Video ended', false, true);
+                    };
+                    event.track.onmute = () => {
+                        console.warn('Video track muted (possibly frozen)');
+                    };
+                    event.track.onunmute = () => {
+                        console.log('Video track unmuted');
+                    };
+                    
                     // Low-latency video playback settings
                     video.playsInline = true;
                     video.muted = true;  // Muted videos can autoplay
                     video.disablePictureInPicture = true;
                     
-                    // Minimize playback buffer
-                    if ('requestVideoFrameCallback' in video) {
-                        // Modern API for frame-accurate timing
-                    }
+                    // Prevent video stalling - catch up to live
+                    video.addEventListener('waiting', () => {
+                        console.log('Video buffering...');
+                    });
+                    video.addEventListener('stalled', () => {
+                        console.warn('Video stalled, attempting recovery...');
+                        // Try to catch up to live edge
+                        if (video.buffered.length > 0) {
+                            const liveEdge = video.buffered.end(video.buffered.length - 1);
+                            if (liveEdge - video.currentTime > 0.5) {
+                                video.currentTime = liveEdge - 0.1;
+                            }
+                        }
+                    });
                     
                     const setAspect = () => {
                         if (video.videoWidth && video.videoHeight) {
@@ -472,6 +512,19 @@
                         setAspect();
                         // Start playback immediately
                         video.play().catch(e => console.warn('Autoplay blocked:', e));
+                        
+                        // Periodic sync to live edge to prevent drift/freeze
+                        setInterval(() => {
+                            if (video.buffered.length > 0 && !video.paused) {
+                                const liveEdge = video.buffered.end(video.buffered.length - 1);
+                                const lag = liveEdge - video.currentTime;
+                                // If more than 0.5s behind, jump to live
+                                if (lag > 0.5) {
+                                    console.log(`Syncing to live (lag: ${lag.toFixed(2)}s)`);
+                                    video.currentTime = liveEdge - 0.05;
+                                }
+                            }
+                        }, 2000);
                     };
                     // In case metadata already available
                     setAspect();

@@ -1,3 +1,4 @@
+import asyncio
 import cv2
 import logging
 import numpy as np
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 # Low-latency tuning constants
 CAMERA_BUFFER_SIZE = 1  # Minimum buffer to get latest frame
 DEFAULT_CODEC = "MJPG"  # Hardware-accelerated, low latency
+FRAME_INTERVAL_TOLERANCE = 0.5  # Allow some timing flexibility
 
 
 class CameraVideoTrack(VideoStreamTrack):
@@ -28,6 +30,7 @@ class CameraVideoTrack(VideoStreamTrack):
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         self.camera.set(cv2.CAP_PROP_FPS, 30)
+        self._last_frame = None  # Cache last good frame
         logger.info("Camera %s initialized with low-latency settings", camera_id)
 
     async def recv(self):
@@ -39,10 +42,19 @@ class CameraVideoTrack(VideoStreamTrack):
 
         ret, frame = self.camera.read()
         if not ret:
-            logger.error("Failed to read frame from camera")
-            return None
+            logger.warning("Failed to read frame from camera, using last frame")
+            # Return last good frame instead of None to prevent stream freeze
+            if self._last_frame is not None:
+                video_frame = VideoFrame.from_ndarray(self._last_frame, format="rgb24")
+                video_frame.pts = pts
+                video_frame.time_base = time_base
+                return video_frame
+            # Create black frame as last resort
+            frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        else:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            self._last_frame = frame.copy()  # Cache good frame
 
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         video_frame = VideoFrame.from_ndarray(frame, format="rgb24")
         video_frame.pts = pts
         video_frame.time_base = time_base
@@ -63,6 +75,7 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         self.cam_settings: list[dict[str, float]] = []
         self.last_warn = 0.0
         self._start_time = None
+        self._last_frame = None  # Cache last good frame to prevent freeze
         # Single-camera mode only.
         self._layout_order = [0]
         self.single_camera_mode = True
@@ -110,18 +123,26 @@ class MultiCameraVideoTrack(VideoStreamTrack):
             )
             cam = self.cameras[cam_idx]
             frame = None
+            got_frame = False
             if cam and cam.isOpened():
                 # Drain buffer to get the most recent frame (reduces latency)
                 # Multiple grabs ensure we skip any queued frames
                 for _ in range(2):
                     cam.grab()
                 ret, frame = self._read_frame(cam)
-                if not ret:
-                    frame = self._create_black_frame(self.width, self.height)
-            else:
-                frame = self._create_black_frame(self.width, self.height)
+                if ret and frame is not None:
+                    got_frame = True
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    self._last_frame = frame.copy()  # Cache good frame
 
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # Use cached frame if current read failed (prevents freeze)
+            if not got_frame:
+                if self._last_frame is not None:
+                    frame = self._last_frame
+                else:
+                    frame = self._create_black_frame(self.width, self.height)
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
             video_frame = VideoFrame.from_ndarray(frame, format="rgb24")
             video_frame.pts = pts
             video_frame.time_base = time_base
@@ -139,6 +160,7 @@ class MultiCameraVideoTrack(VideoStreamTrack):
 
         composite = self._create_composite_frame(frames)
         composite = cv2.cvtColor(composite, cv2.COLOR_BGR2RGB)
+        self._last_frame = composite.copy()  # Cache composite frame
 
         video_frame = VideoFrame.from_ndarray(composite, format="rgb24")
         video_frame.pts = pts
