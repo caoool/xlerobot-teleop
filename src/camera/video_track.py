@@ -52,6 +52,7 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         self.last_warn = 0.0
         self._start_time = None
         self._layout_order = [0, 1, 2]
+        self.single_camera_mode = len(self.camera_ids) == 1
 
         # Lower defaults to reduce latency/bandwidth; override via env if needed.
         self.width = int(os.getenv("ROBOT_CAMERA_WIDTH", "640"))
@@ -87,6 +88,23 @@ class MultiCameraVideoTrack(VideoStreamTrack):
 
     async def recv(self):
         pts, time_base = await self.next_timestamp()
+
+        # Single-camera fast path: return the latest frame only.
+        if self.single_camera_mode and self.cameras:
+            cam = self.cameras[0]
+            frame = None
+            if cam and cam.isOpened():
+                ret, frame = self._read_frame(cam)
+                if not ret:
+                    frame = self._create_black_frame(self.width, self.height)
+            else:
+                frame = self._create_black_frame(self.width, self.height)
+
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            video_frame = VideoFrame.from_ndarray(frame, format="rgb24")
+            video_frame.pts = pts
+            video_frame.time_base = time_base
+            return video_frame
 
         frames = []
         for idx, camera in enumerate(self.cameras):
