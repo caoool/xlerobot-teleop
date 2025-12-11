@@ -289,6 +289,8 @@
 
         let headPan = 0;
         let headTilt = 0;
+        let desiredSingleCamEnabled = true;
+        let desiredSingleCamIndex = 0;
         const PAN_STEP = 3;
         const TILT_STEP = 3;
         const PAN_LIMIT = 45;
@@ -316,6 +318,7 @@
             controlChannel.onopen = () => {
                 updateStatus("Control channel open");
                 enableLayoutSelectors(true);
+                sendSingleCameraIfReady();
             };
 
             pc.addTransceiver('video', { direction: 'recvonly' });
@@ -420,9 +423,6 @@
             rightRes.disabled = !enabled;
             rightFps.disabled = !enabled;
             applyLayoutBtn.disabled = !enabled;
-            singleCamBtn.disabled = !enabled;
-            multiCamBtn.disabled = !enabled;
-            singleCamSelect.disabled = !enabled;
         }
 
         function populateSelects() {
@@ -446,6 +446,11 @@
                 singleCamSelect.appendChild(opt);
             });
             singleCamSelect.value = '0';
+
+            // Single-cam controls should be usable before connecting.
+            singleCamBtn.disabled = false;
+            multiCamBtn.disabled = false;
+            singleCamSelect.disabled = false;
 
             const resTargets = [headRes, leftRes, rightRes];
             resTargets.forEach((sel) => {
@@ -492,8 +497,16 @@
 
         function setSingleCamera(enabled) {
             const idx = parseInt(singleCamSelect.value, 10) || 0;
-            sendCommand({ single_camera: { enabled: enabled, index: idx } });
+            desiredSingleCamEnabled = enabled;
+            desiredSingleCamIndex = idx;
+            sendSingleCameraIfReady();
             updateStatus(enabled ? 'Requested single-camera mode' : 'Requested multi-camera mode');
+        }
+
+        function sendSingleCameraIfReady() {
+            if (controlChannel && controlChannel.readyState === 'open') {
+                sendCommand({ single_camera: { enabled: desiredSingleCamEnabled, index: desiredSingleCamIndex } });
+            }
         }
 
         populateSelects();
@@ -543,6 +556,12 @@
              if (['w', 'a', 's', 'd'].includes(key)) {
                  sendCommand({ x: 0, y: 0, theta: 0 });
              }
+        });
+
+        singleCamSelect.addEventListener('change', () => {
+            const idx = parseInt(singleCamSelect.value, 10) || 0;
+            desiredSingleCamIndex = idx;
+            sendSingleCameraIfReady();
         });
     </script>
 </body>
