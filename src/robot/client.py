@@ -138,9 +138,9 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
 
     ice_env = os.getenv("ROBOT_ICE_SERVERS")
     ice_urls: list[str] = [
-        "stun:stun.miwifi.com:3478",
-        "stun:stun.qq.com:3478",
-        "stun:stun.l.google.com:19302",
+        "turn:47.242.85.149:3478?transport=udp",
+        "turn:47.242.85.149:3478?transport=tcp",
+        "stun:47.242.85.149:3478",
     ]
     if ice_env:
         try:
@@ -162,7 +162,11 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
                         ice_urls = collected
         except Exception:
             logger.warning("Invalid ROBOT_ICE_SERVERS, using empty list")
-    ice_servers = [RTCIceServer(urls=ice_urls)] if ice_urls else []
+    ice_servers = (
+        [RTCIceServer(urls=ice_urls, username="lu", credential="880919Lu")]
+        if ice_urls
+        else []
+    )
     ice_config = RTCConfiguration(iceServers=ice_servers)
 
     while True:
