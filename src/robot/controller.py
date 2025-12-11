@@ -1,7 +1,7 @@
 from typing import Iterable
 
-from .config_xlerobot import XLerobotConfig
-from .xlerobot import XLerobot
+from robot.config_xlerobot import XLerobotConfig
+from robot.xlerobot import XLerobot
 
 HEAD_MOTOR_MAP = {
   "head_motor_1": "head_motor_1",

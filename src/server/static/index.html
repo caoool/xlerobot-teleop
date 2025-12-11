@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cloud Robot Teleop</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel: #111827;
+            --card: #0b1224;
+            --accent: #38bdf8;
+            --accent-2: #a78bfa;
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --border: #1f2937;
+            --success: #34d399;
+            --danger: #f87171;
+            --radius: 14px;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 28px;
+            min-height: 100vh;
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: radial-gradient(circle at 20% 20%, rgba(56,189,248,0.08), transparent 22%),
+                        radial-gradient(circle at 80% 0%, rgba(167,139,250,0.12), transparent 28%),
+                        var(--bg);
+            color: var(--text);
+        }
+        h1 {
+            margin: 0 0 8px 0;
+            font-size: 28px;
+            letter-spacing: -0.02em;
+        }
+        .page {
+            max-width: 1320px;
+            margin: 0 auto;
+        }
+        .toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        .status-pill {
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 13px;
+        }
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px;
+            box-shadow: 0 20px 80px rgba(0,0,0,0.35);
+            margin-bottom: 16px;
+        }
+        #video {
+            width: 100%;
+            max-width: 1280px;
+            height: auto;
+            object-fit: contain;
+            background: #000;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            box-shadow: 0 25px 80px rgba(0,0,0,0.45);
+        }
+        .controls-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .cam-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            padding-bottom: 6px;
+        }
+        button {
+            padding: 11px 16px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            color: #0b1224;
+            border: none;
+            border-radius: 10px;
+            transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+        }
+        .apply-row {
+            margin-top: 12px;
+            display: flex;
+            justify-content: flex-end;
+        }
+        button:hover { transform: translateY(-1px); box-shadow: 0 10px 30px rgba(56,189,248,0.35); }
+        button:active { transform: translateY(0); box-shadow: none; }
+        button:disabled {
+            background: #1f2937;
+            color: #4b5563;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        .ghost {
+            background: var(--card);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .select-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--muted);
+            min-width: 150px;
+        }
+        .cam-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px;
+            min-width: 260px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+        }
+        .cam-card h3 {
+            margin: 0 0 6px 0;
+            font-size: 14px;
+            color: var(--text);
+        }
+        select {
+            padding: 9px 12px;
+            font-size: 15px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--card);
+            color: var(--text);
+        }
+        #status {
+            margin-top: 6px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            background-color: var(--card);
+            border: 1px solid var(--border);
+            font-size: 14px;
+            color: var(--muted);
+        }
+        .info {
+            margin: 0;
+            padding: 12px 14px;
+            background: rgba(56,189,248,0.08);
+            border: 1px solid rgba(56,189,248,0.25);
+            border-radius: 12px;
+            font-size: 14px;
+            color: var(--text);
+        }
+        .info strong { color: var(--accent); }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <div class="toolbar">
+            <div>
+                <h1>Cloud Robot Teleop</h1>
+                <div class="info">
+                    <strong>Controls:</strong> W/S drive forward/back, A/D rotate base; Arrow keys pan/tilt head
+                </div>
+            </div>
+            <div class="status-pill" id="status">Status: Not connected</div>
+        </div>
+
+        <div class="panel">
+            <div class="controls-row" style="gap:14px;">
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <button id="startButton" onclick="start()">Start Stream</button>
+                    <button id="stopButton" class="ghost" onclick="stop()" disabled>Stop Stream</button>
+                </div>
+            </div>
+
+            <div class="cam-row">
+                <div class="cam-card">
+                    <h3>Head</h3>
+                    <div class="select-group">
+                        <label for="headSelect">Camera</label>
+                        <select id="headSelect" disabled></select>
+                    </div>
+                    <div class="select-group">
+                        <label for="headRes">Resolution</label>
+                        <select id="headRes" disabled></select>
+                    </div>
+                    <div class="select-group">
+                        <label for="headFps">FPS</label>
+                        <select id="headFps" disabled></select>
+                    </div>
+                </div>
+                <div class="cam-card">
+                    <h3>Left Hand</h3>
+                    <div class="select-group">
+                        <label for="leftSelect">Camera</label>
+                        <select id="leftSelect" disabled></select>
+                    </div>
+                    <div class="select-group">
+                        <label for="leftRes">Resolution</label>
+                        <select id="leftRes" disabled></select>
+                    </div>
+                    <div class="select-group">
+                        <label for="leftFps">FPS</label>
+                        <select id="leftFps" disabled></select>
+                    </div>
+                </div>
+                <div class="cam-card">
+                    <h3>Right Hand</h3>
+                    <div class="select-group">
+                        <label for="rightSelect">Camera</label>
+                        <select id="rightSelect" disabled></select>
+                    </div>
+                    <div class="select-group">
+                        <label for="rightRes">Resolution</label>
+                        <select id="rightRes" disabled></select>
+                    </div>
+                    <div class="select-group">
+                        <label for="rightFps">FPS</label>
+                        <select id="rightFps" disabled></select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="apply-row">
+                <button id="applyLayout" class="ghost" onclick="applyLayout()" disabled>Apply Layout</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <video id="video" autoplay playsinline></video>
+        </div>
+    </div>
+
+    <script>
+        let pc = null;
+        let localStream = null;
+        let controlChannel = null;
+        const video = document.getElementById('video');
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const headSelect = document.getElementById('headSelect');
+        const headRes = document.getElementById('headRes');
+        const headFps = document.getElementById('headFps');
+        const leftSelect = document.getElementById('leftSelect');
+        const leftRes = document.getElementById('leftRes');
+        const leftFps = document.getElementById('leftFps');
+        const rightSelect = document.getElementById('rightSelect');
+        const rightRes = document.getElementById('rightRes');
+        const rightFps = document.getElementById('rightFps');
+        const applyLayoutBtn = document.getElementById('applyLayout');
+        const status = document.getElementById('status');
+
+        const RES_OPTS = ['640x480', '1280x720', '1920x1080'];
+        const FPS_OPTS = ['15', '30', '60'];
+
+        let headPan = 0;
+        let headTilt = 0;
+        const PAN_STEP = 3;
+        const TILT_STEP = 3;
+        const PAN_LIMIT = 45;
+        const TILT_LIMIT = 45;
+
+        function updateStatus(message) {
+            status.textContent = 'Status: ' + message;
+            console.log(message);
+        }
+
+        async function start() {
+            // Ensure any previous session is cleaned up before starting a new one.
+            if (pc) {
+                await stop();
+            }
+            startButton.disabled = true;
+            updateStatus('Connecting...');
+
+            pc = new RTCPeerConnection({
+                iceServers: [{urls: 'stun:stun.l.google.com:19302'}]
+            });
+
+            // Create Data Channel
+            controlChannel = pc.createDataChannel("control");
+            controlChannel.onopen = () => {
+                updateStatus("Control channel open");
+                enableLayoutSelectors(true);
+            };
+
+            pc.addTransceiver('video', { direction: 'recvonly' });
+            pc.addTransceiver('audio', { direction: 'sendrecv' });
+
+            // Capture browser microphone
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                for (const track of localStream.getAudioTracks()) {
+                    pc.addTrack(track, localStream);
+                }
+            } catch (err) {
+                console.warn('Mic capture failed:', err);
+            }
+
+            pc.addEventListener('track', (event) => {
+                if (event.track.kind === 'video') {
+                    updateStatus('Receiving video stream');
+                    video.srcObject = event.streams[0];
+                    const setAspect = () => {
+                        if (video.videoWidth && video.videoHeight) {
+                            video.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+                        }
+                    };
+                    video.onloadedmetadata = setAspect;
+                    // In case metadata already available
+                    setAspect();
+                } else if (event.track.kind === 'audio') {
+                    const remoteAudio = new Audio();
+                    remoteAudio.srcObject = event.streams[0];
+                    remoteAudio.autoplay = true;
+                }
+            });
+
+            pc.addEventListener('connectionstatechange', () => {
+                updateStatus('Connection state: ' + pc.connectionState);
+                if (pc.connectionState === 'connected') {
+                    stopButton.disabled = false;
+                }
+            });
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            try {
+                const response = await fetch('/offer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sdp: pc.localDescription.sdp,
+                        type: pc.localDescription.type,
+                    }),
+                });
+
+                const answer = await response.json();
+                await pc.setRemoteDescription(answer);
+            } catch (error) {
+                updateStatus('Error: ' + error.message);
+                startButton.disabled = false;
+            }
+        }
+
+        async function stop() {
+            stopButton.disabled = true;
+            enableLayoutSelectors(false);
+            if (pc) {
+                try {
+                    pc.close();
+                } catch (err) {
+                    console.warn('Error closing peer connection:', err);
+                }
+                pc = null;
+                controlChannel = null;
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(t => t.stop());
+                localStream = null;
+            }
+            video.srcObject = null;
+            updateStatus('Disconnected');
+            startButton.disabled = false;
+        }
+
+        function clamp(value, min, max) {
+            return Math.min(Math.max(value, min), max);
+        }
+
+        function sendCommand(data) {
+            if (controlChannel && controlChannel.readyState === 'open') {
+                controlChannel.send(JSON.stringify(data));
+            }
+        }
+
+        function enableLayoutSelectors(enabled) {
+            headSelect.disabled = !enabled;
+            headRes.disabled = !enabled;
+            headFps.disabled = !enabled;
+            leftSelect.disabled = !enabled;
+            leftRes.disabled = !enabled;
+            leftFps.disabled = !enabled;
+            rightSelect.disabled = !enabled;
+            rightRes.disabled = !enabled;
+            rightFps.disabled = !enabled;
+            applyLayoutBtn.disabled = !enabled;
+        }
+
+        function populateSelects() {
+            const options = [0, 1, 2];
+            [headSelect, leftSelect, rightSelect].forEach((sel, idx) => {
+                sel.innerHTML = '';
+                options.forEach((val) => {
+                    const opt = document.createElement('option');
+                    opt.value = val;
+                    opt.textContent = `Camera ${val}`;
+                    sel.appendChild(opt);
+                });
+                sel.value = idx.toString();
+            });
+
+            const resTargets = [headRes, leftRes, rightRes];
+            resTargets.forEach((sel) => {
+                sel.innerHTML = '';
+                RES_OPTS.forEach((val) => {
+                    const opt = document.createElement('option');
+                    opt.value = val;
+                    opt.textContent = val;
+                    sel.appendChild(opt);
+                });
+                sel.value = '640x480';
+            });
+
+            const fpsTargets = [headFps, leftFps, rightFps];
+            fpsTargets.forEach((sel) => {
+                sel.innerHTML = '';
+                FPS_OPTS.forEach((val) => {
+                    const opt = document.createElement('option');
+                    opt.value = val;
+                    opt.textContent = `${val} fps`;
+                    sel.appendChild(opt);
+                });
+                sel.value = '30';
+            });
+        }
+
+        function applyLayout() {
+            const order = [
+                parseInt(headSelect.value, 10),
+                parseInt(leftSelect.value, 10),
+                parseInt(rightSelect.value, 10),
+            ];
+            const parseRes = (val) => {
+                const [w, h] = val.split('x').map((n) => parseInt(n, 10));
+                return { width: w, height: h };
+            };
+            const camera_settings = [
+                { slot: parseInt(headSelect.value, 10), ...parseRes(headRes.value), fps: parseInt(headFps.value, 10) },
+                { slot: parseInt(leftSelect.value, 10), ...parseRes(leftRes.value), fps: parseInt(leftFps.value, 10) },
+                { slot: parseInt(rightSelect.value, 10), ...parseRes(rightRes.value), fps: parseInt(rightFps.value, 10) },
+            ];
+            sendCommand({ layout_order: order, camera_settings });
+        }
+
+        populateSelects();
+
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+
+            // Head control: arrow keys adjust pan/tilt
+            let headChanged = false;
+            if (e.key === 'ArrowLeft') {
+                headPan = clamp(headPan - PAN_STEP, -PAN_LIMIT, PAN_LIMIT);
+                headChanged = true;
+            } else if (e.key === 'ArrowRight') {
+                headPan = clamp(headPan + PAN_STEP, -PAN_LIMIT, PAN_LIMIT);
+                headChanged = true;
+            } else if (e.key === 'ArrowUp') {
+                headTilt = clamp(headTilt + TILT_STEP, -TILT_LIMIT, TILT_LIMIT);
+                headChanged = true;
+            } else if (e.key === 'ArrowDown') {
+                headTilt = clamp(headTilt - TILT_STEP, -TILT_LIMIT, TILT_LIMIT);
+                headChanged = true;
+            }
+
+            if (headChanged) {
+                sendCommand({ pan: headPan, tilt: headTilt });
+            }
+
+            // Base control: WASD for forward/back and rotation
+            let x = 0;
+            let y = 0;
+            let theta = 0;
+            const BASE_X_STEP = 0.35;
+            const BASE_THETA_STEP = 120;
+
+            if (key === 'w') x = BASE_X_STEP;
+            else if (key === 's') x = -BASE_X_STEP;
+            else if (key === 'a') theta = BASE_THETA_STEP;
+            else if (key === 'd') theta = -BASE_THETA_STEP;
+
+            if (x !== 0 || theta !== 0) {
+                sendCommand({ x, y, theta });
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+             const key = e.key.toLowerCase();
+             if (['w', 'a', 's', 'd'].includes(key)) {
+                 sendCommand({ x: 0, y: 0, theta: 0 });
+             }
+        });
+    </script>
+</body>
+</html>

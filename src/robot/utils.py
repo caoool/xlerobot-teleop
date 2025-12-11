@@ -18,8 +18,8 @@ from typing import cast
 
 from lerobot.utils.import_utils import make_device_from_device_class
 
-from .config import RobotConfig
-from .robot import Robot
+from robot.config import RobotConfig
+from robot.base_robot import Robot
 
 
 def make_robot_from_config(config: RobotConfig) -> Robot:
