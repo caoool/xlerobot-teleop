@@ -27,7 +27,7 @@ robot_control_channel = None
 relay = MediaRelay()
 
 DEFAULT_ICE_SERVERS: list[str] = [
-    "turn:47.242.85.149:3478?transport=udp",
+    "turn:47.242.85.149:3478?transport=tcp",
     "stun:47.242.85.149:3478",
 ]
 

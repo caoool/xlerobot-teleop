@@ -138,7 +138,7 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
 
     ice_env = os.getenv("ROBOT_ICE_SERVERS")
     ice_urls: list[str] = [
-        "turn:47.242.85.149:3478?transport=udp",
+        "turn:47.242.85.149:3478?transport=tcp",
         "stun:47.242.85.149:3478",
     ]
     if ice_env:
