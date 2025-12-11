@@ -1,6 +1,8 @@
+import base64
 import json
 import logging
 import os
+import secrets
 import ssl
 from pathlib import Path
 from typing import Optional
@@ -16,6 +18,14 @@ from aiortc import (
 from aiortc.contrib.media import MediaRelay
 
 logger = logging.getLogger(__name__)
+
+# Authentication configuration
+AUTH_USERNAME = os.getenv("AUTH_USERNAME", "admin")
+AUTH_PASSWORD = os.getenv("AUTH_PASSWORD", "teleop123")
+AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() == "true"
+
+# Session tokens (in-memory store)
+valid_sessions: set[str] = set()
 
 # Low-latency tuning: prefer UDP, aggressive ICE, shorter timeouts
 RTC_CONFIG_OPTIONS = {
@@ -106,6 +116,94 @@ def _build_ssl_context() -> Optional[ssl.SSLContext]:
 
 STATIC_DIR = Path(__file__).parent / "static"
 INDEX_FILE = STATIC_DIR / "index.html"
+LOGIN_FILE = STATIC_DIR / "login.html"
+
+
+def _check_auth(request: web.Request) -> bool:
+    """Check if request has valid authentication."""
+    if not AUTH_ENABLED:
+        return True
+
+    # Check session cookie
+    session_token = request.cookies.get("session")
+    if session_token and session_token in valid_sessions:
+        return True
+
+    return False
+
+
+def _require_auth(handler):
+    """Decorator to require authentication for a route."""
+
+    async def wrapper(request: web.Request):
+        if not _check_auth(request):
+            # Redirect to login page for GET requests
+            if request.method == "GET":
+                raise web.HTTPFound("/login")
+            # Return 401 for API requests
+            return web.Response(status=401, text="Unauthorized")
+        return await handler(request)
+
+    return wrapper
+
+
+async def handle_login_page(request: web.Request) -> web.Response:
+    """Serve the login page."""
+    if not AUTH_ENABLED:
+        raise web.HTTPFound("/")
+
+    # If already authenticated, redirect to main page
+    if _check_auth(request):
+        raise web.HTTPFound("/")
+
+    return web.FileResponse(LOGIN_FILE)
+
+
+async def handle_login(request: web.Request) -> web.Response:
+    """Handle login POST request."""
+    if not AUTH_ENABLED:
+        return web.json_response({"success": True})
+
+    try:
+        data = await request.json()
+        username = data.get("username", "")
+        password = data.get("password", "")
+    except Exception:
+        return web.json_response(
+            {"success": False, "error": "Invalid request"}, status=400
+        )
+
+    if username == AUTH_USERNAME and password == AUTH_PASSWORD:
+        # Generate session token
+        session_token = secrets.token_urlsafe(32)
+        valid_sessions.add(session_token)
+
+        response = web.json_response({"success": True})
+        response.set_cookie(
+            "session",
+            session_token,
+            max_age=86400 * 7,  # 7 days
+            httponly=True,
+            samesite="Lax",
+        )
+        logger.info("User '%s' logged in successfully", username)
+        return response
+    else:
+        logger.warning("Failed login attempt for user '%s'", username)
+        return web.json_response(
+            {"success": False, "error": "Invalid credentials"}, status=401
+        )
+
+
+async def handle_logout(request: web.Request) -> web.Response:
+    """Handle logout request."""
+    session_token = request.cookies.get("session")
+    if session_token and session_token in valid_sessions:
+        valid_sessions.discard(session_token)
+
+    response = web.HTTPFound("/login")
+    response.del_cookie("session")
+    return response
 
 
 async def on_shutdown(app: web.Application):
@@ -262,15 +360,41 @@ async def handle_user_offer(request: web.Request) -> web.Response:
 
 
 def index(request):
+    """Serve the main page (requires auth)."""
+    if not _check_auth(request):
+        raise web.HTTPFound("/login")
     return web.FileResponse(INDEX_FILE)
+
+
+async def protected_offer(request: web.Request) -> web.Response:
+    """Protected user offer endpoint."""
+    if not _check_auth(request):
+        return web.Response(status=401, text="Unauthorized")
+    return await handle_user_offer(request)
 
 
 def create_app() -> web.Application:
     app = web.Application()
+
+    # Public routes
+    app.router.add_get("/login", handle_login_page)
+    app.router.add_post("/api/login", handle_login)
+    app.router.add_get("/logout", handle_logout)
+
+    # Protected routes
     app.router.add_get("/", index)
-    app.router.add_post("/offer", handle_user_offer)
+    app.router.add_post("/offer", protected_offer)
+
+    # Robot API (no auth - robots use their own credentials)
     app.router.add_post("/robot/offer", handle_robot_offer)
+
     app.on_shutdown.append(on_shutdown)
+
+    if AUTH_ENABLED:
+        logger.info("Authentication enabled (user: %s)", AUTH_USERNAME)
+    else:
+        logger.info("Authentication disabled")
+
     return app
 
 
