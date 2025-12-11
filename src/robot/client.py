@@ -225,6 +225,16 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
                         video_track.swap_primary_secondary()
                     except Exception as exc:
                         logger.error("Failed to swap cameras: %s", exc)
+                elif data.get("single_camera") is not None:
+                    try:
+                        payload = data.get("single_camera") or {}
+                        enabled = bool(payload.get("enabled"))
+                        cam_index = payload.get("index")
+                        if cam_index is not None:
+                            cam_index = int(cam_index)
+                        video_track.set_single_camera(enabled, cam_index)
+                    except Exception as exc:
+                        logger.error("Failed to set single-camera mode: %s", exc)
                 elif "pan" in data and "tilt" in data:
                     controller.move_head(
                         pan_deg=float(data["pan"]), tilt_deg=float(data["tilt"])

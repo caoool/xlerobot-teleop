@@ -183,6 +183,10 @@
                     <button id="startButton" onclick="start()">Start Stream</button>
                     <button id="stopButton" class="ghost" onclick="stop()" disabled>Stop Stream</button>
                 </div>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <button id="singleCamBtn" class="ghost" onclick="setSingleCamera(true)" disabled>Single cam (head)</button>
+                    <button id="multiCamBtn" class="ghost" onclick="setSingleCamera(false)" disabled>Multi-cam view</button>
+                </div>
             </div>
 
             <div class="cam-row">
@@ -260,6 +264,8 @@
         const rightRes = document.getElementById('rightRes');
         const rightFps = document.getElementById('rightFps');
         const applyLayoutBtn = document.getElementById('applyLayout');
+        const singleCamBtn = document.getElementById('singleCamBtn');
+        const multiCamBtn = document.getElementById('multiCamBtn');
         const status = document.getElementById('status');
 
         const RES_OPTS = ['640x480', '1280x720', '1920x1080'];
@@ -398,6 +404,8 @@
             rightRes.disabled = !enabled;
             rightFps.disabled = !enabled;
             applyLayoutBtn.disabled = !enabled;
+            singleCamBtn.disabled = !enabled;
+            multiCamBtn.disabled = !enabled;
         }
 
         function populateSelects() {
@@ -454,6 +462,11 @@
                 { slot: parseInt(rightSelect.value, 10), ...parseRes(rightRes.value), fps: parseInt(rightFps.value, 10) },
             ];
             sendCommand({ layout_order: order, camera_settings });
+        }
+
+        function setSingleCamera(enabled) {
+            sendCommand({ single_camera: { enabled: enabled, index: 0 } });
+            updateStatus(enabled ? 'Requested single-camera mode' : 'Requested multi-camera mode');
         }
 
         populateSelects();

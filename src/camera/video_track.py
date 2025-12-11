@@ -53,6 +53,7 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         self._start_time = None
         self._layout_order = [0, 1, 2]
         self.single_camera_mode = len(self.camera_ids) == 1
+        self.single_cam_index = 0
 
         # Lower defaults to reduce latency/bandwidth; override via env if needed.
         self.width = int(os.getenv("ROBOT_CAMERA_WIDTH", "640"))
@@ -91,7 +92,12 @@ class MultiCameraVideoTrack(VideoStreamTrack):
 
         # Single-camera fast path: return the latest frame only.
         if self.single_camera_mode and self.cameras:
-            cam = self.cameras[0]
+            cam_idx = (
+                self.single_cam_index
+                if self.single_cam_index < len(self.cameras)
+                else 0
+            )
+            cam = self.cameras[cam_idx]
             frame = None
             if cam and cam.isOpened():
                 ret, frame = self._read_frame(cam)
@@ -250,6 +256,18 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         # Accept any int; frames are padded with black if out of range.
         self._layout_order = [int(x) for x in order]
         logger.info("Layout order updated to %s", self._layout_order)
+
+    def set_single_camera(self, enabled: bool, camera_index: int | None = None):
+        if enabled:
+            idx = camera_index if camera_index is not None else 0
+            self.single_cam_index = max(0, idx)
+            self.single_camera_mode = True
+            logger.info("Single-camera mode enabled on index %s", self.single_cam_index)
+        else:
+            # Revert to default behavior (auto single only when only one cam exists)
+            self.single_camera_mode = len(self.camera_ids) == 1
+            self.single_cam_index = 0
+            logger.info("Single-camera mode disabled; returning to multi-cam view")
 
     def stop(self):
         for camera in self.cameras:
