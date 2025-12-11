@@ -137,7 +137,7 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
     retry_delay = 3
 
     ice_env = os.getenv("ROBOT_ICE_SERVERS")
-    ice_urls = ["stun:stun.l.google.com:19302"]
+    ice_urls: list[str] = []
     if ice_env:
         try:
             parsed = json.loads(ice_env)
