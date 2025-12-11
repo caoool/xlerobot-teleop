@@ -8,23 +8,35 @@ from av import VideoFrame
 
 logger = logging.getLogger(__name__)
 
+# Low-latency tuning constants
+CAMERA_BUFFER_SIZE = 1  # Minimum buffer to get latest frame
+DEFAULT_CODEC = "MJPG"  # Hardware-accelerated, low latency
+
 
 class CameraVideoTrack(VideoStreamTrack):
-    """Single-camera video track using OpenCV."""
+    """Single-camera video track using OpenCV with low-latency settings."""
 
     def __init__(self, camera_id: int = 0):
         super().__init__()
-        self.camera = cv2.VideoCapture(camera_id)
+        self.camera = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
         if not self.camera.isOpened():
             raise RuntimeError(f"Could not open camera {camera_id}")
 
+        # Low-latency camera configuration
+        self.camera.set(cv2.CAP_PROP_BUFFERSIZE, CAMERA_BUFFER_SIZE)
+        self.camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*DEFAULT_CODEC))
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         self.camera.set(cv2.CAP_PROP_FPS, 30)
-        logger.info("Camera %s initialized successfully", camera_id)
+        logger.info("Camera %s initialized with low-latency settings", camera_id)
 
     async def recv(self):
         pts, time_base = await self.next_timestamp()
+
+        # Drain buffer to get the most recent frame (reduces latency)
+        for _ in range(2):
+            self.camera.grab()
+
         ret, frame = self.camera.read()
         if not ret:
             logger.error("Failed to read frame from camera")
@@ -98,6 +110,10 @@ class MultiCameraVideoTrack(VideoStreamTrack):
             cam = self.cameras[cam_idx]
             frame = None
             if cam and cam.isOpened():
+                # Drain buffer to get the most recent frame (reduces latency)
+                # Multiple grabs ensure we skip any queued frames
+                for _ in range(2):
+                    cam.grab()
                 ret, frame = self._read_frame(cam)
                 if not ret:
                     frame = self._create_black_frame(self.width, self.height)

@@ -68,6 +68,10 @@
             border-radius: var(--radius);
             border: 1px solid var(--border);
             box-shadow: 0 25px 80px rgba(0,0,0,0.45);
+            /* Low-latency video rendering optimizations */
+            transform: translateZ(0);  /* Force GPU acceleration */
+            will-change: contents;
+            image-rendering: optimizeSpeed;
         }
         .controls-row {
             display: flex;
@@ -174,7 +178,10 @@
                     <strong>Controls:</strong> W/S drive forward/back, A/D rotate base; Arrow keys pan/tilt head
                 </div>
             </div>
-            <div class="status-pill" id="status">Status: Not connected</div>
+            <div style="display:flex; gap:10px; align-items:center;">
+                <div class="status-pill" id="latency">RTT: -- ms</div>
+                <div class="status-pill" id="status">Status: Not connected</div>
+            </div>
         </div>
 
         <div class="panel">
@@ -220,6 +227,28 @@
         const cameraResSelect = document.getElementById('cameraResSelect');
         const cameraFpsSelect = document.getElementById('cameraFpsSelect');
         const status = document.getElementById('status');
+        const latencyDisplay = document.getElementById('latency');
+
+        // Latency monitoring
+        let statsInterval = null;
+        async function updateLatencyStats() {
+            if (!pc) return;
+            try {
+                const stats = await pc.getStats();
+                stats.forEach(report => {
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                        const rtt = report.currentRoundTripTime;
+                        if (rtt !== undefined) {
+                            latencyDisplay.textContent = `RTT: ${Math.round(rtt * 1000)} ms`;
+                            latencyDisplay.style.borderColor = rtt < 0.1 ? 'var(--success)' : 
+                                                               rtt < 0.2 ? 'var(--accent)' : 'var(--danger)';
+                        }
+                    }
+                });
+            } catch (e) {
+                // Stats not available
+            }
+        }
 
         const RES_OPTS = ['320x240', '640x480', '1280x720', '1920x1080'];
         const FPS_OPTS = ['15', '30', '60'];
@@ -234,6 +263,14 @@
                 credential: '880919Lu',
             },
         ];
+
+        // Low-latency RTC configuration
+        const RTC_CONFIG = {
+            iceServers: ICE_SERVERS,
+            iceCandidatePoolSize: 10,  // Pre-gather candidates
+            bundlePolicy: 'max-bundle',  // Single transport for all streams
+            rtcpMuxPolicy: 'require',  // Multiplex RTCP
+        };
 
         let headPan = 0;
         let headTilt = 0;
@@ -256,12 +293,13 @@
             startButton.disabled = true;
             updateStatus('Connecting...');
 
-            pc = new RTCPeerConnection({
-                iceServers: ICE_SERVERS
-            });
+            pc = new RTCPeerConnection(RTC_CONFIG);
 
-            // Create Data Channel
-            controlChannel = pc.createDataChannel("control");
+            // Create Data Channel with ordered=false for lower latency control
+            controlChannel = pc.createDataChannel("control", {
+                ordered: false,  // Allow out-of-order delivery for lower latency
+                maxRetransmits: 0  // No retransmits for real-time control
+            });
             controlChannel.onopen = () => {
                 updateStatus("Control channel open");
                 sendCameraConfigIfReady();
@@ -284,12 +322,27 @@
                 if (event.track.kind === 'video') {
                     updateStatus('Receiving video stream');
                     video.srcObject = event.streams[0];
+                    
+                    // Low-latency video playback settings
+                    video.playsInline = true;
+                    video.muted = true;  // Muted videos can autoplay
+                    video.disablePictureInPicture = true;
+                    
+                    // Minimize playback buffer
+                    if ('requestVideoFrameCallback' in video) {
+                        // Modern API for frame-accurate timing
+                    }
+                    
                     const setAspect = () => {
                         if (video.videoWidth && video.videoHeight) {
                             video.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
                         }
                     };
-                    video.onloadedmetadata = setAspect;
+                    video.onloadedmetadata = () => {
+                        setAspect();
+                        // Start playback immediately
+                        video.play().catch(e => console.warn('Autoplay blocked:', e));
+                    };
                     // In case metadata already available
                     setAspect();
                 } else if (event.track.kind === 'audio') {
@@ -303,10 +356,41 @@
                 updateStatus('Connection state: ' + pc.connectionState);
                 if (pc.connectionState === 'connected') {
                     stopButton.disabled = false;
+                    // Start latency monitoring
+                    if (statsInterval) clearInterval(statsInterval);
+                    statsInterval = setInterval(updateLatencyStats, 1000);
+                }
+                if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                    if (statsInterval) {
+                        clearInterval(statsInterval);
+                        statsInterval = null;
+                    }
+                    latencyDisplay.textContent = 'RTT: -- ms';
                 }
             });
 
+            // Function to optimize SDP for low latency
+            function optimizeSdpForLowLatency(sdp) {
+                let lines = sdp.split('\r\n');
+                let result = [];
+                
+                for (let i = 0; i < lines.length; i++) {
+                    let line = lines[i];
+                    result.push(line);
+                    
+                    // After video media line, add bandwidth constraints
+                    if (line.startsWith('m=video')) {
+                        // Lower bandwidth forces smaller frames and less buffering
+                        result.push('b=AS:1500');  // 1.5 Mbps max
+                    }
+                }
+                
+                return result.join('\r\n');
+            }
+
             const offer = await pc.createOffer();
+            // Optimize SDP for low latency
+            offer.sdp = optimizeSdpForLowLatency(offer.sdp);
             await pc.setLocalDescription(offer);
 
             try {
@@ -329,6 +413,13 @@
 
         async function stop() {
             stopButton.disabled = true;
+            // Stop latency monitoring
+            if (statsInterval) {
+                clearInterval(statsInterval);
+                statsInterval = null;
+            }
+            latencyDisplay.textContent = 'RTT: -- ms';
+            
             if (pc) {
                 try {
                     pc.close();

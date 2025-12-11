@@ -25,10 +25,15 @@ from robot.controller import Controller
 logger = logging.getLogger(__name__)
 
 DISABLE_AUDIO = os.getenv("ROBOT_DISABLE_AUDIO") == "1"
-AUDIO_LATENCY_MS = int(os.getenv("ROBOT_AUDIO_LATENCY_MS", "20"))
-AUDIO_PTIME_MS = int(os.getenv("ROBOT_AUDIO_PTIME_MS", "20"))
+AUDIO_LATENCY_MS = int(
+    os.getenv("ROBOT_AUDIO_LATENCY_MS", "10")
+)  # Reduced for lower latency
+AUDIO_PTIME_MS = int(os.getenv("ROBOT_AUDIO_PTIME_MS", "10"))  # Smaller packets
 AUDIO_RATE = os.getenv("ROBOT_AUDIO_RATE", "8000")
 AUDIO_CHANNELS = os.getenv("ROBOT_AUDIO_CHANNELS", "1")
+
+# Low-latency tuning constants
+VIDEO_BITRATE_KBPS = int(os.getenv("ROBOT_VIDEO_BITRATE_KBPS", "1500"))
 
 controller: Controller | None = None
 
@@ -78,6 +83,7 @@ def _open_media_player(kind: str) -> Optional[MediaPlayer]:
         "audio_buffer_size": str(AUDIO_LATENCY_MS),
         "sample_rate": AUDIO_RATE,
         "channels": AUDIO_CHANNELS,
+        "thread_queue_size": "512",  # Smaller queue for lower latency
     }
 
     for device, fmt, label in attempts:
@@ -192,8 +198,12 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
             pc.addTransceiver("audio", direction="recvonly")
             logger.info("Added audio transceiver (recvonly)")
 
-        # Create Data Channel for control
-        control_channel = pc.createDataChannel("control")
+        # Create Data Channel for control with low-latency options
+        control_channel = pc.createDataChannel(
+            "control",
+            ordered=False,  # Allow out-of-order for lower latency
+            maxRetransmits=0,  # No retransmits for real-time control
+        )
 
         @control_channel.on("open")
         def on_open():

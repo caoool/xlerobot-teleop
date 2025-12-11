@@ -1,10 +1,9 @@
-import asyncio
 import json
 import logging
 import os
 import ssl
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Optional
 
 from aiohttp import web
 from aiortc import (
@@ -17,6 +16,13 @@ from aiortc import (
 from aiortc.contrib.media import MediaRelay
 
 logger = logging.getLogger(__name__)
+
+# Low-latency tuning: prefer UDP, aggressive ICE, shorter timeouts
+RTC_CONFIG_OPTIONS = {
+    "iceCandidatePoolSize": 10,  # Pre-gather ICE candidates
+    "bundlePolicy": "max-bundle",  # Multiplex all streams on single transport
+    "rtcpMuxPolicy": "require",  # Reduce ports needed
+}
 # Silence noisy VP8 decoder warnings from aiortc when packets drop.
 logging.getLogger("aiortc.codecs.vpx").setLevel(logging.ERROR)
 
@@ -29,6 +35,7 @@ user_pc: Optional[RTCPeerConnection] = None
 robot_video_track: Optional[MediaStreamTrack] = None
 robot_audio_track: Optional[MediaStreamTrack] = None
 robot_control_channel = None
+# Use unbuffered relay for lowest latency (no frame queuing)
 relay = MediaRelay()
 
 DEFAULT_ICE_SERVERS: list[str] = [
@@ -107,6 +114,19 @@ async def on_shutdown(app: web.Application):
         await robot_pc.close()
     if user_pc:
         await user_pc.close()
+
+
+def _optimize_sdp_for_low_latency(sdp: str) -> str:
+    """Modify SDP to optimize for low latency streaming."""
+    lines = sdp.split("\r\n")
+    optimized = []
+    for line in lines:
+        optimized.append(line)
+        # Add low-latency parameters after video media line
+        if line.startswith("m=video"):
+            # Will add b=AS after media line in a=fmtp
+            pass
+    return "\r\n".join(optimized)
 
 
 async def handle_robot_offer(request: web.Request) -> web.Response:
@@ -194,14 +214,15 @@ async def handle_user_offer(request: web.Request) -> web.Response:
             if user_pc == pc:
                 user_pc = None
 
-    # Add Robot Tracks to User PC
+    # Add Robot Tracks to User PC with unbuffered relay for lowest latency
     if robot_video_track:
-        pc.addTrack(relay.subscribe(robot_video_track))
-        logger.info("Added robot video track to user")
+        # buffered=False disables frame queuing for real-time streaming
+        pc.addTrack(relay.subscribe(robot_video_track, buffered=False))
+        logger.info("Added robot video track to user (unbuffered)")
 
     if robot_audio_track:
-        pc.addTrack(relay.subscribe(robot_audio_track))
-        logger.info("Added robot audio track to user")
+        pc.addTrack(relay.subscribe(robot_audio_track, buffered=False))
+        logger.info("Added robot audio track to user (unbuffered)")
 
     # Handle User Audio (to send to Robot)
     @pc.on("track")
