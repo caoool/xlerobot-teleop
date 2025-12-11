@@ -1,7 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Cloud Robot Teleop</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robot Teleop</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -56,11 +58,11 @@
             font-size: 32px;
             font-weight: 700;
             letter-spacing: -0.03em;
-            background: linear-gradient(135deg, var(--text) 0%, var(--accent) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--text);
             margin-bottom: 8px;
+        }
+        .header-left h1 .accent {
+            color: var(--accent);
         }
         .header-left .subtitle {
             color: var(--muted);
@@ -274,7 +276,7 @@
         <!-- Header -->
         <div class="header">
             <div class="header-left">
-                <h1>🤖 Robot Teleop</h1>
+                <h1>Robot <span class="accent">Teleop</span></h1>
                 <p class="subtitle">Real-time remote control interface</p>
             </div>
             <div class="status-bar">
@@ -328,7 +330,7 @@
                 </div>
                 <div class="hint-group">
                     <span class="label">Head</span>
-                    <div class="keys"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></div>
+                    <div class="keys"><kbd>O</kbd><kbd>K</kbd><kbd>L</kbd><kbd>;</kbd></div>
                 </div>
             </div>
         </div>
@@ -646,19 +648,20 @@
         window.addEventListener('keydown', (e) => {
             const key = e.key.toLowerCase();
 
-            // Head control: arrow keys adjust pan/tilt
+            // Head control: O/K/L/; keys adjust pan/tilt (like arrow layout)
+            // O = up (tilt down), K = down (tilt up), L = left, ; = right
             let headChanged = false;
-            if (e.key === 'ArrowLeft') {
+            if (key === 'l') {
                 headPan = clamp(headPan - PAN_STEP, -PAN_LIMIT, PAN_LIMIT);
                 headChanged = true;
-            } else if (e.key === 'ArrowRight') {
+            } else if (key === ';') {
                 headPan = clamp(headPan + PAN_STEP, -PAN_LIMIT, PAN_LIMIT);
                 headChanged = true;
-            } else if (e.key === 'ArrowUp') {
-                headTilt = clamp(headTilt + TILT_STEP, -TILT_LIMIT, TILT_LIMIT);
-                headChanged = true;
-            } else if (e.key === 'ArrowDown') {
+            } else if (key === 'o') {
                 headTilt = clamp(headTilt - TILT_STEP, -TILT_LIMIT, TILT_LIMIT);
+                headChanged = true;
+            } else if (key === 'k') {
+                headTilt = clamp(headTilt + TILT_STEP, -TILT_LIMIT, TILT_LIMIT);
                 headChanged = true;
             }
 
