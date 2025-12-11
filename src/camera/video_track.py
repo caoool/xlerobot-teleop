@@ -69,9 +69,10 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         self.single_cam_index = 0
 
         # Lower defaults to reduce latency/bandwidth; override via env if needed.
-        self.width = int(os.getenv("ROBOT_CAMERA_WIDTH", "320"))
-        self.height = int(os.getenv("ROBOT_CAMERA_HEIGHT", "240"))
-        self.fps = float(os.getenv("ROBOT_CAMERA_FPS", "15"))
+        # 640x480 provides good clarity with acceptable latency
+        self.width = int(os.getenv("ROBOT_CAMERA_WIDTH", "640"))
+        self.height = int(os.getenv("ROBOT_CAMERA_HEIGHT", "480"))
+        self.fps = float(os.getenv("ROBOT_CAMERA_FPS", "20"))
 
         # Only use the first camera ID; single-camera mode only.
         if self.camera_ids:
