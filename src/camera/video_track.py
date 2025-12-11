@@ -14,6 +14,11 @@ CAMERA_BUFFER_SIZE = 1  # Minimum buffer to get latest frame
 DEFAULT_CODEC = "MJPG"  # Hardware-accelerated, low latency
 FRAME_INTERVAL_TOLERANCE = 0.5  # Allow some timing flexibility
 
+# Robust camera settings
+CAMERA_OPEN_RETRIES = 3  # Number of times to retry opening camera
+CAMERA_OPEN_DELAY = 0.5  # Delay between open retries
+CAMERA_REOPEN_THRESHOLD = 10  # Consecutive failures before reopening camera
+
 
 class CameraVideoTrack(VideoStreamTrack):
     """Single-camera video track using OpenCV with low-latency settings."""
@@ -76,6 +81,8 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         self.last_warn = 0.0
         self._start_time = None
         self._last_frame = None  # Cache last good frame to prevent freeze
+        self._consecutive_failures = 0  # Track consecutive read failures
+        self._stopped = False  # Track if track has been stopped
         # Single-camera mode only.
         self._layout_order = [0]
         self.single_camera_mode = True
@@ -100,7 +107,7 @@ class MultiCameraVideoTrack(VideoStreamTrack):
             "fps": self.fps,
         }
         self.cam_settings.append(settings)
-        camera = self._open_camera(primary_id, settings)
+        camera = self._open_camera_with_retry(primary_id, settings)
         self.cameras.append(camera)
 
     async def next_timestamp(self):
@@ -124,6 +131,7 @@ class MultiCameraVideoTrack(VideoStreamTrack):
             cam = self.cameras[cam_idx]
             frame = None
             got_frame = False
+
             if cam and cam.isOpened():
                 # Drain buffer to get the most recent frame (reduces latency)
                 # Multiple grabs ensure we skip any queued frames
@@ -132,8 +140,25 @@ class MultiCameraVideoTrack(VideoStreamTrack):
                 ret, frame = self._read_frame(cam)
                 if ret and frame is not None:
                     got_frame = True
+                    self._consecutive_failures = 0  # Reset failure counter
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     self._last_frame = frame.copy()  # Cache good frame
+                else:
+                    self._consecutive_failures += 1
+            else:
+                self._consecutive_failures += 1
+
+            # Try to reopen camera if too many consecutive failures
+            if (
+                self._consecutive_failures >= CAMERA_REOPEN_THRESHOLD
+                and not self._stopped
+            ):
+                logger.warning(
+                    "Too many consecutive failures (%d), attempting to reopen camera",
+                    self._consecutive_failures,
+                )
+                self._reopen_camera(cam_idx)
+                self._consecutive_failures = 0
 
             # Use cached frame if current read failed (prevents freeze)
             if not got_frame:
@@ -172,6 +197,47 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         h = height or self.height
         return np.zeros((h, w, 3), dtype=np.uint8)
 
+    def _open_camera_with_retry(
+        self,
+        cam_id: int,
+        settings: dict[str, float],
+        retries: int = CAMERA_OPEN_RETRIES,
+    ):
+        """Open camera with retries for robustness."""
+        for attempt in range(retries):
+            camera = self._open_camera(cam_id, settings)
+            if camera and camera.isOpened():
+                # Verify we can actually read from it
+                ret, _ = camera.read()
+                if ret:
+                    logger.info(
+                        "Camera %s opened successfully on attempt %d",
+                        cam_id,
+                        attempt + 1,
+                    )
+                    return camera
+                else:
+                    logger.warning(
+                        "Camera %s opened but can't read, retry %d/%d",
+                        cam_id,
+                        attempt + 1,
+                        retries,
+                    )
+                    camera.release()
+            else:
+                logger.warning(
+                    "Failed to open camera %s, retry %d/%d",
+                    cam_id,
+                    attempt + 1,
+                    retries,
+                )
+
+            if attempt < retries - 1:
+                time.sleep(CAMERA_OPEN_DELAY)
+
+        logger.error("Failed to open camera %s after %d attempts", cam_id, retries)
+        return None
+
     def _open_camera(self, cam_id: int, settings: dict[str, float]):
         camera = cv2.VideoCapture(cam_id, cv2.CAP_V4L2)
         if not camera.isOpened():
@@ -182,6 +248,38 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         self._apply_camera_settings(camera, settings)
         logger.info("Camera %s initialized successfully", cam_id)
         return camera
+
+    def _reopen_camera(self, cam_idx: int):
+        """Attempt to reopen a camera that has stopped working."""
+        if cam_idx >= len(self.cameras) or cam_idx >= len(self.camera_ids):
+            return
+
+        cam_id = self.camera_ids[cam_idx]
+        settings = (
+            self.cam_settings[cam_idx]
+            if cam_idx < len(self.cam_settings)
+            else {"width": self.width, "height": self.height, "fps": self.fps}
+        )
+
+        # Release old camera first
+        old_cam = self.cameras[cam_idx]
+        if old_cam:
+            try:
+                old_cam.release()
+            except Exception as e:
+                logger.debug("Error releasing old camera: %s", e)
+
+        # Small delay to allow device to be freed
+        time.sleep(0.2)
+
+        # Try to reopen
+        new_cam = self._open_camera_with_retry(cam_id, settings)
+        self.cameras[cam_idx] = new_cam
+
+        if new_cam:
+            logger.info("Camera %s (index %d) reopened successfully", cam_id, cam_idx)
+        else:
+            logger.error("Failed to reopen camera %s (index %d)", cam_id, cam_idx)
 
     def _read_frame(self, camera):
         try:
@@ -319,6 +417,7 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         self.cam_settings = [
             {"width": self.width, "height": self.height, "fps": self.fps}
         ]
+        self._consecutive_failures = 0  # Reset failure counter
 
         # Release old cameras
         for cam in self.cameras:
@@ -329,7 +428,10 @@ class MultiCameraVideoTrack(VideoStreamTrack):
                     pass
         self.cameras = []
 
-        cam = self._open_camera(self.camera_ids[0], self.cam_settings[0])
+        # Small delay to allow device to be freed
+        time.sleep(0.2)
+
+        cam = self._open_camera_with_retry(self.camera_ids[0], self.cam_settings[0])
         self.cameras.append(cam)
         if cam:
             logger.info(
@@ -343,12 +445,16 @@ class MultiCameraVideoTrack(VideoStreamTrack):
             logger.error("Failed to open camera %s", self.camera_ids[0])
 
     def stop(self):
+        """Stop the video track and release all cameras."""
+        self._stopped = True
         for camera in self.cameras:
             if camera:
                 try:
                     camera.release()
                 except Exception:
                     pass
+        self.cameras = []
+        logger.info("Video track stopped")
 
     def _get_cam_dims(self, idx: int) -> tuple[int, int]:
         if 0 <= idx < len(self.cam_settings):
