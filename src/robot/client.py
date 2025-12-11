@@ -137,10 +137,7 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
     retry_delay = 3
 
     ice_env = os.getenv("ROBOT_ICE_SERVERS")
-    ice_urls: list[str] = [
-        "turn:47.242.85.149:3478?transport=tcp",
-        "stun:47.242.85.149:3478",
-    ]
+    ice_urls: list[str] = []
     if ice_env:
         try:
             parsed = json.loads(ice_env)
@@ -160,10 +157,9 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
                     if collected:
                         ice_urls = collected
         except Exception:
-            logger.warning("Invalid ROBOT_ICE_SERVERS, using default STUN")
-    ice_config = RTCConfiguration(
-        iceServers=[RTCIceServer(urls=ice_urls, username="lu", credential="880919Lu")]
-    )
+            logger.warning("Invalid ROBOT_ICE_SERVERS, using empty list")
+    ice_servers = [RTCIceServer(urls=ice_urls)] if ice_urls else []
+    ice_config = RTCConfiguration(iceServers=ice_servers)
 
     while True:
         pc = RTCPeerConnection(configuration=ice_config)
@@ -185,8 +181,6 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
             pc.addTrack(audio_player.audio)
             logger.info("Added audio track (mic)")
         else:
-            # Add Audio Transceiver (Speaker) - recvonly
-            # We expect the server to send us audio (from the user)
             pc.addTransceiver("audio", direction="recvonly")
             logger.info("Added audio transceiver (recvonly)")
 

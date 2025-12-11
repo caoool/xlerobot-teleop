@@ -26,10 +26,7 @@ robot_audio_track: Optional[MediaStreamTrack] = None
 robot_control_channel = None
 relay = MediaRelay()
 
-DEFAULT_ICE_SERVERS: list[str] = [
-    "turn:47.242.85.149:3478?transport=tcp",
-    "stun:47.242.85.149:3478",
-]
+DEFAULT_ICE_SERVERS: list[str] = []
 
 
 def _get_ice_configuration() -> RTCConfiguration:
@@ -56,7 +53,7 @@ def _get_ice_configuration() -> RTCConfiguration:
                         servers = collected
         except Exception:
             logger.warning("Invalid ICE_SERVERS env value; using default STUN")
-    ice_servers = [RTCIceServer(urls=servers, username="lu", credential="880919Lu")]
+    ice_servers = [RTCIceServer(urls=servers)] if servers else []
     return RTCConfiguration(iceServers=ice_servers)
 
 
