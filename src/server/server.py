@@ -26,7 +26,11 @@ robot_audio_track: Optional[MediaStreamTrack] = None
 robot_control_channel = None
 relay = MediaRelay()
 
-DEFAULT_ICE_SERVERS: list[str] = []
+DEFAULT_ICE_SERVERS: list[str] = [
+    "stun:stun.miwifi.com:3478",
+    "stun:stun.qq.com:3478",
+    "stun:stun.l.google.com:19302",
+]
 
 
 def _get_ice_configuration() -> RTCConfiguration:
