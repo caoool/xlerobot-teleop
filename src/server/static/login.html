@@ -1,6 +1,8 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Robot Teleop</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -51,11 +53,11 @@
         .logo h1 {
             font-size: 28px;
             font-weight: 700;
-            background: linear-gradient(135deg, var(--text) 0%, var(--accent) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--text);
             margin-bottom: 8px;
+        }
+        .logo h1 .accent {
+            color: var(--accent);
         }
         .logo p {
             color: var(--muted);
@@ -135,7 +137,7 @@
     <div class="login-container">
         <div class="login-card">
             <div class="logo">
-                <h1>🤖 Robot Teleop</h1>
+                <h1>Robot <span class="accent">Teleop</span></h1>
                 <p>Sign in to access the control panel</p>
             </div>
             
