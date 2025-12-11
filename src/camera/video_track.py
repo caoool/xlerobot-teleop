@@ -56,9 +56,9 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         self.single_cam_index = 0
 
         # Lower defaults to reduce latency/bandwidth; override via env if needed.
-        self.width = int(os.getenv("ROBOT_CAMERA_WIDTH", "640"))
-        self.height = int(os.getenv("ROBOT_CAMERA_HEIGHT", "480"))
-        self.fps = float(os.getenv("ROBOT_CAMERA_FPS", "30"))
+        self.width = int(os.getenv("ROBOT_CAMERA_WIDTH", "320"))
+        self.height = int(os.getenv("ROBOT_CAMERA_HEIGHT", "240"))
+        self.fps = float(os.getenv("ROBOT_CAMERA_FPS", "15"))
 
         for idx, cam_id in enumerate(self.camera_ids):
             settings = {
@@ -67,17 +67,8 @@ class MultiCameraVideoTrack(VideoStreamTrack):
                 "fps": self.fps,
             }
             self.cam_settings.append(settings)
-            camera = cv2.VideoCapture(cam_id, cv2.CAP_V4L2)
-            if not camera.isOpened():
-                logger.warning("Could not open camera %s", cam_id)
-                self.cameras.append(None)
-                continue
-
-            camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-            self._apply_camera_settings(camera, settings)
+            camera = self._open_camera(cam_id, settings)
             self.cameras.append(camera)
-            logger.info("Camera %s initialized successfully", cam_id)
 
     async def next_timestamp(self):
         if self._start_time is None:
@@ -134,6 +125,17 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         w = width or self.width
         h = height or self.height
         return np.zeros((h, w, 3), dtype=np.uint8)
+
+    def _open_camera(self, cam_id: int, settings: dict[str, float]):
+        camera = cv2.VideoCapture(cam_id, cv2.CAP_V4L2)
+        if not camera.isOpened():
+            logger.warning("Could not open camera %s", cam_id)
+            return None
+        camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        self._apply_camera_settings(camera, settings)
+        logger.info("Camera %s initialized successfully", cam_id)
+        return camera
 
     def _read_frame(self, camera):
         try:
@@ -263,10 +265,33 @@ class MultiCameraVideoTrack(VideoStreamTrack):
             self.single_cam_index = max(0, idx)
             self.single_camera_mode = True
             logger.info("Single-camera mode enabled on index %s", self.single_cam_index)
+            # Release other cameras to avoid extra capture/bandwidth
+            for i, cam in enumerate(self.cameras):
+                if i != self.single_cam_index and cam:
+                    try:
+                        cam.release()
+                    except Exception:
+                        pass
+                    self.cameras[i] = None
         else:
             # Revert to default behavior (auto single only when only one cam exists)
             self.single_camera_mode = len(self.camera_ids) == 1
             self.single_cam_index = 0
+            # Re-open any cameras that were released while in single-cam mode
+            for i, cam in enumerate(self.cameras):
+                if cam is None and i < len(self.camera_ids):
+                    cam_settings = (
+                        self.cam_settings[i]
+                        if i < len(self.cam_settings)
+                        else {
+                            "width": self.width,
+                            "height": self.height,
+                            "fps": self.fps,
+                        }
+                    )
+                    self.cameras[i] = self._open_camera(
+                        self.camera_ids[i], cam_settings
+                    )
             logger.info("Single-camera mode disabled; returning to multi-cam view")
 
     def stop(self):

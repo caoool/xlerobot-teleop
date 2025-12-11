@@ -186,6 +186,10 @@
                 <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                     <button id="singleCamBtn" class="ghost" onclick="setSingleCamera(true)" disabled>Single cam (head)</button>
                     <button id="multiCamBtn" class="ghost" onclick="setSingleCamera(false)" disabled>Multi-cam view</button>
+                    <label style="display:flex; align-items:center; gap:6px; font-size:13px; color: var(--muted);">
+                        Cam index
+                        <select id="singleCamSelect" disabled style="min-width:70px;"></select>
+                    </label>
                 </div>
             </div>
 
@@ -266,10 +270,22 @@
         const applyLayoutBtn = document.getElementById('applyLayout');
         const singleCamBtn = document.getElementById('singleCamBtn');
         const multiCamBtn = document.getElementById('multiCamBtn');
+        const singleCamSelect = document.getElementById('singleCamSelect');
         const status = document.getElementById('status');
 
-        const RES_OPTS = ['640x480', '1280x720', '1920x1080'];
+        const RES_OPTS = ['320x240', '640x480', '1280x720', '1920x1080'];
         const FPS_OPTS = ['15', '30', '60'];
+        const ICE_SERVERS = [
+            {
+                urls: [
+                    'turn:47.242.85.149:3478?transport=udp',
+                    'turn:47.242.85.149:3478?transport=tcp',
+                    'stun:47.242.85.149:3478',
+                ],
+                username: 'lu',
+                credential: '880919Lu',
+            },
+        ];
 
         let headPan = 0;
         let headTilt = 0;
@@ -292,7 +308,7 @@
             updateStatus('Connecting...');
 
             pc = new RTCPeerConnection({
-                iceServers: [{urls: 'stun:stun.l.google.com:19302'}]
+                iceServers: ICE_SERVERS
             });
 
             // Create Data Channel
@@ -406,6 +422,7 @@
             applyLayoutBtn.disabled = !enabled;
             singleCamBtn.disabled = !enabled;
             multiCamBtn.disabled = !enabled;
+            singleCamSelect.disabled = !enabled;
         }
 
         function populateSelects() {
@@ -420,6 +437,15 @@
                 });
                 sel.value = idx.toString();
             });
+
+            singleCamSelect.innerHTML = '';
+            options.forEach((val) => {
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = val.toString();
+                singleCamSelect.appendChild(opt);
+            });
+            singleCamSelect.value = '0';
 
             const resTargets = [headRes, leftRes, rightRes];
             resTargets.forEach((sel) => {
@@ -465,7 +491,8 @@
         }
 
         function setSingleCamera(enabled) {
-            sendCommand({ single_camera: { enabled: enabled, index: 0 } });
+            const idx = parseInt(singleCamSelect.value, 10) || 0;
+            sendCommand({ single_camera: { enabled: enabled, index: idx } });
             updateStatus(enabled ? 'Requested single-camera mode' : 'Requested multi-camera mode');
         }
 
