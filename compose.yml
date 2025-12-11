@@ -9,21 +9,10 @@ services:
     container_name: teleop-server
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:${PORT:-8080}"
       - "443:443"  # HTTPS (optional, requires SSL certs)
-    environment:
-      - HOST=0.0.0.0
-      - PORT=8080
-      # Authentication (change these in production!)
-      - AUTH_ENABLED=true
-      - AUTH_USERNAME=admin
-      - AUTH_PASSWORD=teleop123
-      # SSL Configuration (uncomment and set paths for HTTPS)
-      # - SSL_CERT_FILE=/certs/fullchain.pem
-      # - SSL_KEY_FILE=/certs/privkey.pem
-      # - SSL_PASSWORD=
-      # ICE/TURN Server Configuration
-      - ICE_SERVERS=["turn:47.242.85.149:3478?transport=udp","turn:47.242.85.149:3478?transport=tcp","stun:47.242.85.149:3478"]
+    env_file:
+      - .env
     volumes:
       # Mount SSL certificates (uncomment for HTTPS)
       # - ./certs:/certs:ro
@@ -32,7 +21,7 @@ services:
     networks:
       - teleop-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/login')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-8080}/login')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -47,7 +36,7 @@ services:
     volumes:
       - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
     env_file:
-      - turn.env
+      - .env
     # Note: coturn needs host networking for proper NAT traversal
     # Ports used: 3478 (STUN/TURN), 5349 (TURN TLS), 49152-65535 (relay)
 
