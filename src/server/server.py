@@ -6,7 +6,13 @@ from pathlib import Path
 from typing import Iterable, List, Optional
 
 from aiohttp import web
-from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
+from aiortc import (
+    RTCPeerConnection,
+    RTCSessionDescription,
+    MediaStreamTrack,
+    RTCConfiguration,
+    RTCIceServer,
+)
 from aiortc.contrib.media import MediaRelay
 
 logger = logging.getLogger(__name__)
@@ -20,17 +26,29 @@ robot_audio_track: Optional[MediaStreamTrack] = None
 robot_control_channel = None
 relay = MediaRelay()
 
-DEFAULT_ICE_SERVERS = [{"urls": ["stun:stun.l.google.com:19302"]}]
+DEFAULT_ICE_SERVERS = ["stun:stun.l.google.com:19302"]
 
 
-def _get_ice_servers():
+def _get_ice_configuration() -> RTCConfiguration:
     env_val = os.getenv("ICE_SERVERS")
+    servers: list[str] = DEFAULT_ICE_SERVERS
     if env_val:
         try:
-            return json.loads(env_val)
+            parsed = json.loads(env_val)
+            # Accept either list of strings or list of {"urls": [...]}
+            if isinstance(parsed, list) and parsed:
+                if isinstance(parsed[0], str):
+                    servers = [str(u) for u in parsed]
+                elif isinstance(parsed[0], dict) and "urls" in parsed[0]:
+                    servers = (
+                        parsed[0]["urls"]
+                        if isinstance(parsed[0]["urls"], list)
+                        else [parsed[0]["urls"]]
+                    )
         except Exception:
             logger.warning("Invalid ICE_SERVERS env value; using default STUN")
-    return DEFAULT_ICE_SERVERS
+    ice_servers = [RTCIceServer(urls=servers)]
+    return RTCConfiguration(iceServers=ice_servers)
 
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -54,7 +72,7 @@ async def handle_robot_offer(request: web.Request) -> web.Response:
     if robot_pc:
         await robot_pc.close()
 
-    pc = RTCPeerConnection(configuration={"iceServers": _get_ice_servers()})
+    pc = RTCPeerConnection(configuration=_get_ice_configuration())
     robot_pc = pc
 
     logger.info("Robot connecting...")
@@ -117,7 +135,7 @@ async def handle_user_offer(request: web.Request) -> web.Response:
     if user_pc:
         await user_pc.close()
 
-    pc = RTCPeerConnection(configuration={"iceServers": _get_ice_servers()})
+    pc = RTCPeerConnection(configuration=_get_ice_configuration())
     user_pc = pc
 
     logger.info("User connecting...")

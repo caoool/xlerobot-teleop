@@ -11,7 +11,12 @@ import pathlib
 from typing import Optional, Tuple
 
 import aiohttp
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import (
+    RTCPeerConnection,
+    RTCSessionDescription,
+    RTCConfiguration,
+    RTCIceServer,
+)
 from aiortc.contrib.media import MediaPlayer, MediaRecorder
 
 from camera import MultiCameraVideoTrack
@@ -131,18 +136,26 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
         controller = Controller()
     retry_delay = 3
 
-    ice_servers = os.getenv("ROBOT_ICE_SERVERS")
-    try:
-        ice_servers_cfg = (
-            json.loads(ice_servers)
-            if ice_servers
-            else [{"urls": ["stun:stun.l.google.com:19302"]}]
-        )
-    except Exception:
-        ice_servers_cfg = [{"urls": ["stun:stun.l.google.com:19302"]}]
+    ice_env = os.getenv("ROBOT_ICE_SERVERS")
+    ice_urls = ["stun:stun.l.google.com:19302"]
+    if ice_env:
+        try:
+            parsed = json.loads(ice_env)
+            if isinstance(parsed, list) and parsed:
+                if isinstance(parsed[0], str):
+                    ice_urls = [str(u) for u in parsed]
+                elif isinstance(parsed[0], dict) and "urls" in parsed[0]:
+                    ice_urls = (
+                        parsed[0]["urls"]
+                        if isinstance(parsed[0]["urls"], list)
+                        else [parsed[0]["urls"]]
+                    )
+        except Exception:
+            logger.warning("Invalid ROBOT_ICE_SERVERS, using default STUN")
+    ice_config = RTCConfiguration(iceServers=[RTCIceServer(urls=ice_urls)])
 
     while True:
-        pc = RTCPeerConnection(configuration={"iceServers": ice_servers_cfg})
+        pc = RTCPeerConnection(configuration=ice_config)
         video_track = None
         audio_player = None
         recorder = None
