@@ -183,66 +183,24 @@
                     <button id="startButton" onclick="start()">Start Stream</button>
                     <button id="stopButton" class="ghost" onclick="stop()" disabled>Stop Stream</button>
                 </div>
-                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <button id="singleCamBtn" class="ghost" onclick="setSingleCamera(true)" disabled>Single cam (head)</button>
-                    <button id="multiCamBtn" class="ghost" onclick="setSingleCamera(false)" disabled>Multi-cam view</button>
-                    <label style="display:flex; align-items:center; gap:6px; font-size:13px; color: var(--muted);">
-                        Cam index
-                        <select id="singleCamSelect" disabled style="min-width:70px;"></select>
-                    </label>
-                </div>
             </div>
 
-            <div class="cam-row">
-                <div class="cam-card">
-                    <h3>Head</h3>
+            <div class="cam-row" style="flex-wrap:wrap;">
+                <div class="cam-card" style="min-width:320px;">
+                    <h3>Single Camera Settings</h3>
                     <div class="select-group">
-                        <label for="headSelect">Camera</label>
-                        <select id="headSelect" disabled></select>
+                        <label for="cameraIndexSelect">Camera Index</label>
+                        <select id="cameraIndexSelect"></select>
                     </div>
                     <div class="select-group">
-                        <label for="headRes">Resolution</label>
-                        <select id="headRes" disabled></select>
+                        <label for="cameraResSelect">Resolution</label>
+                        <select id="cameraResSelect"></select>
                     </div>
                     <div class="select-group">
-                        <label for="headFps">FPS</label>
-                        <select id="headFps" disabled></select>
-                    </div>
-                </div>
-                <div class="cam-card">
-                    <h3>Left Hand</h3>
-                    <div class="select-group">
-                        <label for="leftSelect">Camera</label>
-                        <select id="leftSelect" disabled></select>
-                    </div>
-                    <div class="select-group">
-                        <label for="leftRes">Resolution</label>
-                        <select id="leftRes" disabled></select>
-                    </div>
-                    <div class="select-group">
-                        <label for="leftFps">FPS</label>
-                        <select id="leftFps" disabled></select>
+                        <label for="cameraFpsSelect">FPS</label>
+                        <select id="cameraFpsSelect"></select>
                     </div>
                 </div>
-                <div class="cam-card">
-                    <h3>Right Hand</h3>
-                    <div class="select-group">
-                        <label for="rightSelect">Camera</label>
-                        <select id="rightSelect" disabled></select>
-                    </div>
-                    <div class="select-group">
-                        <label for="rightRes">Resolution</label>
-                        <select id="rightRes" disabled></select>
-                    </div>
-                    <div class="select-group">
-                        <label for="rightFps">FPS</label>
-                        <select id="rightFps" disabled></select>
-                    </div>
-                </div>
-            </div>
-
-            <div class="apply-row">
-                <button id="applyLayout" class="ghost" onclick="applyLayout()" disabled>Apply Layout</button>
             </div>
         </div>
 
@@ -258,19 +216,9 @@
         const video = document.getElementById('video');
         const startButton = document.getElementById('startButton');
         const stopButton = document.getElementById('stopButton');
-        const headSelect = document.getElementById('headSelect');
-        const headRes = document.getElementById('headRes');
-        const headFps = document.getElementById('headFps');
-        const leftSelect = document.getElementById('leftSelect');
-        const leftRes = document.getElementById('leftRes');
-        const leftFps = document.getElementById('leftFps');
-        const rightSelect = document.getElementById('rightSelect');
-        const rightRes = document.getElementById('rightRes');
-        const rightFps = document.getElementById('rightFps');
-        const applyLayoutBtn = document.getElementById('applyLayout');
-        const singleCamBtn = document.getElementById('singleCamBtn');
-        const multiCamBtn = document.getElementById('multiCamBtn');
-        const singleCamSelect = document.getElementById('singleCamSelect');
+        const cameraIndexSelect = document.getElementById('cameraIndexSelect');
+        const cameraResSelect = document.getElementById('cameraResSelect');
+        const cameraFpsSelect = document.getElementById('cameraFpsSelect');
         const status = document.getElementById('status');
 
         const RES_OPTS = ['320x240', '640x480', '1280x720', '1920x1080'];
@@ -289,8 +237,7 @@
 
         let headPan = 0;
         let headTilt = 0;
-        let desiredSingleCamEnabled = true;
-        let desiredSingleCamIndex = 0;
+        let desiredCameraConfig = { index: 0, width: 320, height: 240, fps: 15 };
         const PAN_STEP = 3;
         const TILT_STEP = 3;
         const PAN_LIMIT = 45;
@@ -317,8 +264,7 @@
             controlChannel = pc.createDataChannel("control");
             controlChannel.onopen = () => {
                 updateStatus("Control channel open");
-                enableLayoutSelectors(true);
-                sendSingleCameraIfReady();
+                sendCameraConfigIfReady();
             };
 
             pc.addTransceiver('video', { direction: 'recvonly' });
@@ -383,7 +329,6 @@
 
         async function stop() {
             stopButton.disabled = true;
-            enableLayoutSelectors(false);
             if (pc) {
                 try {
                     pc.close();
@@ -411,105 +356,63 @@
                 controlChannel.send(JSON.stringify(data));
             }
         }
-
-        function enableLayoutSelectors(enabled) {
-            headSelect.disabled = !enabled;
-            headRes.disabled = !enabled;
-            headFps.disabled = !enabled;
-            leftSelect.disabled = !enabled;
-            leftRes.disabled = !enabled;
-            leftFps.disabled = !enabled;
-            rightSelect.disabled = !enabled;
-            rightRes.disabled = !enabled;
-            rightFps.disabled = !enabled;
-            applyLayoutBtn.disabled = !enabled;
-        }
-
         function populateSelects() {
-            const options = [0, 1, 2];
-            [headSelect, leftSelect, rightSelect].forEach((sel, idx) => {
-                sel.innerHTML = '';
-                options.forEach((val) => {
-                    const opt = document.createElement('option');
-                    opt.value = val;
-                    opt.textContent = `Camera ${val}`;
-                    sel.appendChild(opt);
-                });
-                sel.value = idx.toString();
-            });
-
-            singleCamSelect.innerHTML = '';
-            options.forEach((val) => {
+            const camOptions = Array.from({ length: 8 }, (_, i) => i);
+            cameraIndexSelect.innerHTML = '';
+            camOptions.forEach((val) => {
                 const opt = document.createElement('option');
                 opt.value = val;
                 opt.textContent = val.toString();
-                singleCamSelect.appendChild(opt);
+                cameraIndexSelect.appendChild(opt);
             });
-            singleCamSelect.value = '0';
+            cameraIndexSelect.value = desiredCameraConfig.index.toString();
 
-            // Single-cam controls should be usable before connecting.
-            singleCamBtn.disabled = false;
-            multiCamBtn.disabled = false;
-            singleCamSelect.disabled = false;
-
-            const resTargets = [headRes, leftRes, rightRes];
-            resTargets.forEach((sel) => {
-                sel.innerHTML = '';
-                RES_OPTS.forEach((val) => {
-                    const opt = document.createElement('option');
-                    opt.value = val;
-                    opt.textContent = val;
-                    sel.appendChild(opt);
-                });
-                sel.value = '640x480';
+            const resOptions = ['320x240', '640x480', '1280x720', '1920x1080'];
+            cameraResSelect.innerHTML = '';
+            resOptions.forEach((val) => {
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = val;
+                cameraResSelect.appendChild(opt);
             });
+            cameraResSelect.value = `${desiredCameraConfig.width}x${desiredCameraConfig.height}`;
 
-            const fpsTargets = [headFps, leftFps, rightFps];
-            fpsTargets.forEach((sel) => {
-                sel.innerHTML = '';
-                FPS_OPTS.forEach((val) => {
-                    const opt = document.createElement('option');
-                    opt.value = val;
-                    opt.textContent = `${val} fps`;
-                    sel.appendChild(opt);
-                });
-                sel.value = '30';
+            const fpsOptions = ['15', '30', '60'];
+            cameraFpsSelect.innerHTML = '';
+            fpsOptions.forEach((val) => {
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = `${val} fps`;
+                cameraFpsSelect.appendChild(opt);
             });
+            cameraFpsSelect.value = desiredCameraConfig.fps.toString();
         }
 
-        function applyLayout() {
-            const order = [
-                parseInt(headSelect.value, 10),
-                parseInt(leftSelect.value, 10),
-                parseInt(rightSelect.value, 10),
-            ];
-            const parseRes = (val) => {
-                const [w, h] = val.split('x').map((n) => parseInt(n, 10));
-                return { width: w, height: h };
-            };
-            const camera_settings = [
-                { slot: parseInt(headSelect.value, 10), ...parseRes(headRes.value), fps: parseInt(headFps.value, 10) },
-                { slot: parseInt(leftSelect.value, 10), ...parseRes(leftRes.value), fps: parseInt(leftFps.value, 10) },
-                { slot: parseInt(rightSelect.value, 10), ...parseRes(rightRes.value), fps: parseInt(rightFps.value, 10) },
-            ];
-            sendCommand({ layout_order: order, camera_settings });
-        }
-
-        function setSingleCamera(enabled) {
-            const idx = parseInt(singleCamSelect.value, 10) || 0;
-            desiredSingleCamEnabled = enabled;
-            desiredSingleCamIndex = idx;
-            sendSingleCameraIfReady();
-            updateStatus(enabled ? 'Requested single-camera mode' : 'Requested multi-camera mode');
-        }
-
-        function sendSingleCameraIfReady() {
+        function sendCameraConfigIfReady() {
             if (controlChannel && controlChannel.readyState === 'open') {
-                sendCommand({ single_camera: { enabled: desiredSingleCamEnabled, index: desiredSingleCamIndex } });
+                sendCommand({
+                    camera_config: {
+                        index: desiredCameraConfig.index,
+                        width: desiredCameraConfig.width,
+                        height: desiredCameraConfig.height,
+                        fps: desiredCameraConfig.fps,
+                    },
+                });
             }
         }
 
         populateSelects();
+
+        function updateDesiredCameraConfig() {
+            const [w, h] = (cameraResSelect.value || '320x240').split('x').map((n) => parseInt(n, 10));
+            desiredCameraConfig = {
+                index: parseInt(cameraIndexSelect.value, 10) || 0,
+                width: w || 320,
+                height: h || 240,
+                fps: parseInt(cameraFpsSelect.value, 10) || 15,
+            };
+            sendCameraConfigIfReady();
+        }
 
         window.addEventListener('keydown', (e) => {
             const key = e.key.toLowerCase();
@@ -558,11 +461,9 @@
              }
         });
 
-        singleCamSelect.addEventListener('change', () => {
-            const idx = parseInt(singleCamSelect.value, 10) || 0;
-            desiredSingleCamIndex = idx;
-            sendSingleCameraIfReady();
-        });
+        cameraIndexSelect.addEventListener('change', updateDesiredCameraConfig);
+        cameraResSelect.addEventListener('change', updateDesiredCameraConfig);
+        cameraFpsSelect.addEventListener('change', updateDesiredCameraConfig);
     </script>
 </body>
 </html>

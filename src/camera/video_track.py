@@ -51,9 +51,9 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         self.cam_settings: list[dict[str, float]] = []
         self.last_warn = 0.0
         self._start_time = None
-        self._layout_order = [0, 1, 2]
-        # Default to single-camera mode for lower latency/bandwidth unless explicitly disabled.
-        self.single_camera_mode = os.getenv("ROBOT_SINGLE_CAMERA_DEFAULT", "1") != "0"
+        # Single-camera mode only.
+        self._layout_order = [0]
+        self.single_camera_mode = True
         self.single_cam_index = 0
 
         # Lower defaults to reduce latency/bandwidth; override via env if needed.
@@ -61,19 +61,21 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         self.height = int(os.getenv("ROBOT_CAMERA_HEIGHT", "240"))
         self.fps = float(os.getenv("ROBOT_CAMERA_FPS", "15"))
 
-        for idx, cam_id in enumerate(self.camera_ids):
-            settings = {
-                "width": self.width,
-                "height": self.height,
-                "fps": self.fps,
-            }
-            self.cam_settings.append(settings)
-            camera = self._open_camera(cam_id, settings)
-            self.cameras.append(camera)
+        # Only use the first camera ID; single-camera mode only.
+        if self.camera_ids:
+            primary_id = self.camera_ids[0]
+        else:
+            primary_id = 0
+            self.camera_ids = [primary_id]
 
-        # If starting in single-cam mode and multiple cameras exist, release the others.
-        if self.single_camera_mode and len(self.cameras) > 1:
-            self._enforce_single_camera()
+        settings = {
+            "width": self.width,
+            "height": self.height,
+            "fps": self.fps,
+        }
+        self.cam_settings.append(settings)
+        camera = self._open_camera(primary_id, settings)
+        self.cameras.append(camera)
 
     async def next_timestamp(self):
         if self._start_time is None:
@@ -264,43 +266,42 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         self._layout_order = [int(x) for x in order]
         logger.info("Layout order updated to %s", self._layout_order)
 
-    def set_single_camera(self, enabled: bool, camera_index: int | None = None):
-        if enabled:
-            idx = camera_index if camera_index is not None else 0
-            self.single_cam_index = max(0, idx)
-            self.single_camera_mode = True
-            logger.info("Single-camera mode enabled on index %s", self.single_cam_index)
-            self._enforce_single_camera()
-        else:
-            # Revert to default behavior (auto single only when only one cam exists)
-            self.single_camera_mode = len(self.camera_ids) == 1
-            self.single_cam_index = 0
-            # Re-open any cameras that were released while in single-cam mode
-            for i, cam in enumerate(self.cameras):
-                if cam is None and i < len(self.camera_ids):
-                    cam_settings = (
-                        self.cam_settings[i]
-                        if i < len(self.cam_settings)
-                        else {
-                            "width": self.width,
-                            "height": self.height,
-                            "fps": self.fps,
-                        }
-                    )
-                    self.cameras[i] = self._open_camera(
-                        self.camera_ids[i], cam_settings
-                    )
-            logger.info("Single-camera mode disabled; returning to multi-cam view")
+    def set_camera_config(self, camera_index: int, width: int, height: int, fps: float):
+        """Switch to a specific camera index and apply resolution/fps.
 
-    def _enforce_single_camera(self):
-        # Release all cameras except the selected single-cam index.
-        for i, cam in enumerate(self.cameras):
-            if i != self.single_cam_index and cam:
+        Releases any existing camera handles and opens only the requested camera.
+        """
+        self.single_camera_mode = True
+        self.single_cam_index = 0
+        self.camera_ids = [int(camera_index)]
+        self.width = int(width)
+        self.height = int(height)
+        self.fps = float(fps)
+        self.cam_settings = [
+            {"width": self.width, "height": self.height, "fps": self.fps}
+        ]
+
+        # Release old cameras
+        for cam in self.cameras:
+            if cam:
                 try:
                     cam.release()
                 except Exception:
                     pass
-                self.cameras[i] = None
+        self.cameras = []
+
+        cam = self._open_camera(self.camera_ids[0], self.cam_settings[0])
+        self.cameras.append(cam)
+        if cam:
+            logger.info(
+                "Camera switched to index %s at %sx%s@%sfps",
+                self.camera_ids[0],
+                self.width,
+                self.height,
+                self.fps,
+            )
+        else:
+            logger.error("Failed to open camera %s", self.camera_ids[0])
 
     def stop(self):
         for camera in self.cameras:

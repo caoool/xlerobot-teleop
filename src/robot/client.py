@@ -204,37 +204,16 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
             logger.info(f"Received control message: {message}")
             try:
                 data = json.loads(message)
-                if data.get("camera_settings"):
+                if data.get("camera_config") is not None:
+                    cfg = data.get("camera_config") or {}
                     try:
-                        video_track.apply_settings(data.get("camera_settings"))
+                        cam_index = int(cfg.get("index", 0))
+                        width = int(cfg.get("width", video_track.width))
+                        height = int(cfg.get("height", video_track.height))
+                        fps = float(cfg.get("fps", video_track.fps))
+                        video_track.set_camera_config(cam_index, width, height, fps)
                     except Exception as exc:
-                        logger.error("Failed to apply camera settings: %s", exc)
-
-                if data.get("layout_order"):
-                    try:
-                        video_track.set_layout(data.get("layout_order"))
-                    except Exception as exc:
-                        logger.error("Failed to set layout: %s", exc)
-                elif data.get("cycle_layout"):
-                    try:
-                        video_track.cycle_layout()
-                    except Exception as exc:
-                        logger.error("Failed to cycle cameras: %s", exc)
-                elif data.get("swap_cameras"):
-                    try:
-                        video_track.swap_primary_secondary()
-                    except Exception as exc:
-                        logger.error("Failed to swap cameras: %s", exc)
-                elif data.get("single_camera") is not None:
-                    try:
-                        payload = data.get("single_camera") or {}
-                        enabled = bool(payload.get("enabled"))
-                        cam_index = payload.get("index")
-                        if cam_index is not None:
-                            cam_index = int(cam_index)
-                        video_track.set_single_camera(enabled, cam_index)
-                    except Exception as exc:
-                        logger.error("Failed to set single-camera mode: %s", exc)
+                        logger.error("Failed to set camera config: %s", exc)
                 elif "pan" in data and "tilt" in data:
                     controller.move_head(
                         pan_deg=float(data["pan"]), tilt_deg=float(data["tilt"])
@@ -325,7 +304,7 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     server_url = os.getenv("CLOUD_SERVER_URL", "http://localhost:8080")
-    # Default camera IDs; override with ROBOT_CAMERA_IDS="0,2,4"
+    # Default camera ID; override with ROBOT_CAMERA_IDS="0" (first value used)
     env_ids = os.getenv("ROBOT_CAMERA_IDS")
     if env_ids:
         try:
@@ -334,7 +313,7 @@ if __name__ == "__main__":
             logger.warning(
                 "Invalid ROBOT_CAMERA_IDS value '%s', falling back to defaults", env_ids
             )
-            camera_ids = [0, 2, 4]
+            camera_ids = [0]
     else:
-        camera_ids = [0, 2, 4]
+        camera_ids = [0]
     asyncio.run(run_robot_client(server_url, camera_ids))
