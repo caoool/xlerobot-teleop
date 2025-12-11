@@ -52,7 +52,8 @@ class MultiCameraVideoTrack(VideoStreamTrack):
         self.last_warn = 0.0
         self._start_time = None
         self._layout_order = [0, 1, 2]
-        self.single_camera_mode = len(self.camera_ids) == 1
+        # Default to single-camera mode for lower latency/bandwidth unless explicitly disabled.
+        self.single_camera_mode = os.getenv("ROBOT_SINGLE_CAMERA_DEFAULT", "1") != "0"
         self.single_cam_index = 0
 
         # Lower defaults to reduce latency/bandwidth; override via env if needed.
@@ -69,6 +70,10 @@ class MultiCameraVideoTrack(VideoStreamTrack):
             self.cam_settings.append(settings)
             camera = self._open_camera(cam_id, settings)
             self.cameras.append(camera)
+
+        # If starting in single-cam mode and multiple cameras exist, release the others.
+        if self.single_camera_mode and len(self.cameras) > 1:
+            self._enforce_single_camera()
 
     async def next_timestamp(self):
         if self._start_time is None:
@@ -265,14 +270,7 @@ class MultiCameraVideoTrack(VideoStreamTrack):
             self.single_cam_index = max(0, idx)
             self.single_camera_mode = True
             logger.info("Single-camera mode enabled on index %s", self.single_cam_index)
-            # Release other cameras to avoid extra capture/bandwidth
-            for i, cam in enumerate(self.cameras):
-                if i != self.single_cam_index and cam:
-                    try:
-                        cam.release()
-                    except Exception:
-                        pass
-                    self.cameras[i] = None
+            self._enforce_single_camera()
         else:
             # Revert to default behavior (auto single only when only one cam exists)
             self.single_camera_mode = len(self.camera_ids) == 1
@@ -293,6 +291,16 @@ class MultiCameraVideoTrack(VideoStreamTrack):
                         self.camera_ids[i], cam_settings
                     )
             logger.info("Single-camera mode disabled; returning to multi-cam view")
+
+    def _enforce_single_camera(self):
+        # Release all cameras except the selected single-cam index.
+        for i, cam in enumerate(self.cameras):
+            if i != self.single_cam_index and cam:
+                try:
+                    cam.release()
+                except Exception:
+                    pass
+                self.cameras[i] = None
 
     def stop(self):
         for camera in self.cameras:
