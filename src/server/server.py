@@ -26,12 +26,16 @@ robot_audio_track: Optional[MediaStreamTrack] = None
 robot_control_channel = None
 relay = MediaRelay()
 
-DEFAULT_ICE_SERVERS: list[str] = []
+DEFAULT_ICE_SERVERS: list[str] = [
+    "stun:stun.miwifi.com:3478",
+    "stun:stun.qq.com:3478",
+    "stun:stun.l.google.com:19302",
+]
 
 
 def _get_ice_configuration() -> RTCConfiguration:
     env_val = os.getenv("ICE_SERVERS")
-    servers: list[str] = DEFAULT_ICE_SERVERS
+    servers: list[str] = list(DEFAULT_ICE_SERVERS)
     if env_val:
         try:
             parsed = json.loads(env_val)
@@ -39,12 +43,18 @@ def _get_ice_configuration() -> RTCConfiguration:
             if isinstance(parsed, list) and parsed:
                 if isinstance(parsed[0], str):
                     servers = [str(u) for u in parsed]
-                elif isinstance(parsed[0], dict) and "urls" in parsed[0]:
-                    servers = (
-                        parsed[0]["urls"]
-                        if isinstance(parsed[0]["urls"], list)
-                        else [parsed[0]["urls"]]
-                    )
+                elif isinstance(parsed[0], dict):
+                    collected: list[str] = []
+                    for entry in parsed:
+                        if not isinstance(entry, dict) or "urls" not in entry:
+                            continue
+                        urls = entry["urls"]
+                        if isinstance(urls, list):
+                            collected.extend([str(u) for u in urls])
+                        else:
+                            collected.append(str(urls))
+                    if collected:
+                        servers = collected
         except Exception:
             logger.warning("Invalid ICE_SERVERS env value; using default STUN")
     ice_servers = [RTCIceServer(urls=servers)]

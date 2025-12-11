@@ -137,19 +137,29 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
     retry_delay = 3
 
     ice_env = os.getenv("ROBOT_ICE_SERVERS")
-    ice_urls: list[str] = []
+    ice_urls: list[str] = [
+        "stun:stun.miwifi.com:3478",
+        "stun:stun.qq.com:3478",
+        "stun:stun.l.google.com:19302",
+    ]
     if ice_env:
         try:
             parsed = json.loads(ice_env)
             if isinstance(parsed, list) and parsed:
                 if isinstance(parsed[0], str):
                     ice_urls = [str(u) for u in parsed]
-                elif isinstance(parsed[0], dict) and "urls" in parsed[0]:
-                    ice_urls = (
-                        parsed[0]["urls"]
-                        if isinstance(parsed[0]["urls"], list)
-                        else [parsed[0]["urls"]]
-                    )
+                elif isinstance(parsed[0], dict):
+                    collected: list[str] = []
+                    for entry in parsed:
+                        if not isinstance(entry, dict) or "urls" not in entry:
+                            continue
+                        urls = entry["urls"]
+                        if isinstance(urls, list):
+                            collected.extend([str(u) for u in urls])
+                        else:
+                            collected.append(str(urls))
+                    if collected:
+                        ice_urls = collected
         except Exception:
             logger.warning("Invalid ROBOT_ICE_SERVERS, using default STUN")
     ice_config = RTCConfiguration(iceServers=[RTCIceServer(urls=ice_urls)])
