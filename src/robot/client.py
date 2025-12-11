@@ -131,8 +131,18 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
         controller = Controller()
     retry_delay = 3
 
+    ice_servers = os.getenv("ROBOT_ICE_SERVERS")
+    try:
+        ice_servers_cfg = (
+            json.loads(ice_servers)
+            if ice_servers
+            else [{"urls": ["stun:stun.l.google.com:19302"]}]
+        )
+    except Exception:
+        ice_servers_cfg = [{"urls": ["stun:stun.l.google.com:19302"]}]
+
     while True:
-        pc = RTCPeerConnection()
+        pc = RTCPeerConnection(configuration={"iceServers": ice_servers_cfg})
         video_track = None
         audio_player = None
         recorder = None

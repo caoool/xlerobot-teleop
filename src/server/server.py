@@ -20,6 +20,19 @@ robot_audio_track: Optional[MediaStreamTrack] = None
 robot_control_channel = None
 relay = MediaRelay()
 
+DEFAULT_ICE_SERVERS = [{"urls": ["stun:stun.l.google.com:19302"]}]
+
+
+def _get_ice_servers():
+    env_val = os.getenv("ICE_SERVERS")
+    if env_val:
+        try:
+            return json.loads(env_val)
+        except Exception:
+            logger.warning("Invalid ICE_SERVERS env value; using default STUN")
+    return DEFAULT_ICE_SERVERS
+
+
 STATIC_DIR = Path(__file__).parent / "static"
 INDEX_FILE = STATIC_DIR / "index.html"
 
@@ -41,7 +54,7 @@ async def handle_robot_offer(request: web.Request) -> web.Response:
     if robot_pc:
         await robot_pc.close()
 
-    pc = RTCPeerConnection()
+    pc = RTCPeerConnection(configuration={"iceServers": _get_ice_servers()})
     robot_pc = pc
 
     logger.info("Robot connecting...")
@@ -104,7 +117,7 @@ async def handle_user_offer(request: web.Request) -> web.Response:
     if user_pc:
         await user_pc.close()
 
-    pc = RTCPeerConnection()
+    pc = RTCPeerConnection(configuration={"iceServers": _get_ice_servers()})
     user_pc = pc
 
     logger.info("User connecting...")
