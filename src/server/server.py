@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # Silence noisy VP8 decoder warnings from aiortc when packets drop.
 logging.getLogger("aiortc.codecs.vpx").setLevel(logging.ERROR)
 
-DEFAULT_PORT = 443
+DEFAULT_PORT = 8080
 
 # Global state
 robot_pc: Optional[RTCPeerConnection] = None

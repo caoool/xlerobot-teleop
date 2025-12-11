@@ -1,6 +1,12 @@
 # Cloud signaling/relay server
 
-## Local TLS quick start (port 443)
+## Quick start (HTTP on 8080)
+
+```bash
+uv run src/server/server.py
+```
+
+## Optional: local TLS (port 443)
 
 ```bash
 ./scripts/generate_dev_cert.sh           # writes certs/teleop-dev.{crt,key}
@@ -15,21 +21,20 @@ PORT=443 uv run src/server/server.py
 docker build -t teleop-cloud-server .
 ```
 
-## Run the container (HTTPS on 443)
+## Run the container (HTTP on 8080)
 
 ```bash
 docker run --rm \
-	-p 443:443 \
-	-e PORT=443 \
-	-e SSL_CERT_FILE=/certs/teleop-dev.crt \
-	-e SSL_KEY_FILE=/certs/teleop-dev.key \
-	-v $(pwd)/certs:/certs:ro \
+	-p 8080:8080 \
+	-e PORT=8080 \
 	teleop-cloud-server
 ```
 
+To enable HTTPS in the container, add `-e PORT=443 -p 443:443` and mount your cert/key with `SSL_CERT_FILE`/`SSL_KEY_FILE`.
+
 ## Environment
 
-- `PORT` / `CLOUD_SERVER_PORT`: port to listen on (default `443`).
+- `PORT` / `CLOUD_SERVER_PORT`: port to listen on (default `8080`).
 - `HOST`: bind address (default `0.0.0.0`).
 - `SSL_CERT_FILE` / `SSL_KEY_FILE`: paths to TLS cert and key; enable HTTPS when both are set.
 - `SSL_PASSWORD`: optional password for encrypted key.
