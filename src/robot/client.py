@@ -138,9 +138,8 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
 
     ice_env = os.getenv("ROBOT_ICE_SERVERS")
     ice_urls: list[str] = [
-        "stun:stun.miwifi.com:3478",
-        "stun:stun.qq.com:3478",
-        "stun:stun.l.google.com:19302",
+        "turn:47.242.85.149:3478?transport=udp",
+        "stun:47.242.85.149:3478",
     ]
     if ice_env:
         try:
@@ -162,7 +161,9 @@ async def run_robot_client(server_url: str, camera_ids: list[int]):
                         ice_urls = collected
         except Exception:
             logger.warning("Invalid ROBOT_ICE_SERVERS, using default STUN")
-    ice_config = RTCConfiguration(iceServers=[RTCIceServer(urls=ice_urls)])
+    ice_config = RTCConfiguration(
+        iceServers=[RTCIceServer(urls=ice_urls, username="lu", credential="880919Lu")]
+    )
 
     while True:
         pc = RTCPeerConnection(configuration=ice_config)

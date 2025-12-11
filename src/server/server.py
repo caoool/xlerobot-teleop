@@ -27,9 +27,8 @@ robot_control_channel = None
 relay = MediaRelay()
 
 DEFAULT_ICE_SERVERS: list[str] = [
-    "stun:stun.miwifi.com:3478",
-    "stun:stun.qq.com:3478",
-    "stun:stun.l.google.com:19302",
+    "turn:47.242.85.149:3478?transport=udp",
+    "stun:47.242.85.149:3478",
 ]
 
 
@@ -57,7 +56,7 @@ def _get_ice_configuration() -> RTCConfiguration:
                         servers = collected
         except Exception:
             logger.warning("Invalid ICE_SERVERS env value; using default STUN")
-    ice_servers = [RTCIceServer(urls=servers)]
+    ice_servers = [RTCIceServer(urls=servers, username="lu", credential="880919Lu")]
     return RTCConfiguration(iceServers=ice_servers)
 
 
