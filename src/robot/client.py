@@ -482,7 +482,7 @@ class RobustRobotClient:
         audio_transceiver = self.pc.addTransceiver("audio", direction="sendrecv")
         self.audio_player = _open_media_player("input")
         if self.audio_player and self.audio_player.audio:
-            await audio_transceiver.sender.replaceTrack(self.audio_player.audio)
+            audio_transceiver.sender.replaceTrack(self.audio_player.audio)
             logger.info("Audio transceiver ready (sendrecv) with mic")
         else:
             logger.info("Audio transceiver ready (sendrecv) without mic")
