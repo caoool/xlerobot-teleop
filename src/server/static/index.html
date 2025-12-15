@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robot Teleop</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="/static/joycon.js"></script>
+    <style>
+        :root {
+            --bg: #0a0e1a;
+            --panel: #0f1629;
+            --card: #141b2d;
+            --card-hover: #1a2238;
+            --accent: #60a5fa;
+            --accent-2: #a78bfa;
+            --accent-glow: rgba(96, 165, 250, 0.15);
+            --text: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --muted: #64748b;
+            --border: #1e293b;
+            --border-light: #334155;
+            --success: #34d399;
+            --warning: #fbbf24;
+            --danger: #f87171;
+            --radius: 16px;
+            --radius-sm: 10px;
+            --shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            --shadow-glow: 0 0 40px rgba(96, 165, 250, 0.1);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+        body {
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: 
+                radial-gradient(ellipse at 20% 0%, rgba(96, 165, 250, 0.08), transparent 50%),
+                radial-gradient(ellipse at 80% 100%, rgba(167, 139, 250, 0.06), transparent 50%),
+                var(--bg);
+            color: var(--text);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+        }
+        .page {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 100%;
+            min-height: 0;
+            overflow: hidden;
+        }
+        
+        /* Header */
+        .header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+        .header-left h1 {
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+        .header-left h1 .accent {
+            color: var(--accent);
+        }
+        .header-left .subtitle {
+            color: var(--muted);
+            font-size: 14px;
+        }
+        .status-bar {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .status-pill {
+            padding: 8px 16px;
+            border-radius: 999px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+        .status-pill::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--muted);
+        }
+        .status-pill.connected::before { background: var(--success); box-shadow: 0 0 8px var(--success); }
+        .status-pill.error::before { background: var(--danger); }
+        
+        /* Control Panel */
+        .control-panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            box-shadow: var(--shadow);
+            flex-shrink: 0;
+        }
+        .control-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .button-group {
+            display: flex;
+            gap: 8px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            color: var(--bg);
+            border: none;
+            border-radius: var(--radius-sm);
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        button:hover:not(:disabled) { 
+            transform: translateY(-2px); 
+            box-shadow: 0 10px 30px rgba(96, 165, 250, 0.3);
+        }
+        button:active:not(:disabled) { transform: translateY(0); }
+        button:disabled {
+            background: var(--card);
+            color: var(--muted);
+            cursor: not-allowed;
+        }
+        button.secondary {
+            background: var(--card);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        button.secondary:hover:not(:disabled) {
+            background: var(--card-hover);
+            border-color: var(--border-light);
+            box-shadow: none;
+        }
+        
+        /* Camera Settings - Single Row */
+        .camera-settings {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 8px 16px;
+        }
+        .settings-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .settings-label svg {
+            width: 14px;
+            height: 14px;
+            opacity: 0.7;
+        }
+        .setting-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .setting-item label {
+            font-size: 11px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+        select {
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 500;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--panel);
+            color: var(--text);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 80px;
+        }
+        select:hover { border-color: var(--border-light); }
+        select:focus { 
+            outline: none; 
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+        
+        /* Video Panel */
+        .video-panel {
+            flex: 1;
+            min-height: 0;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 12px;
+            box-shadow: var(--shadow), var(--shadow-glow);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .video-container {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: linear-gradient(135deg, #000 0%, #0a0e1a 100%);
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            /* Low-latency video rendering optimizations */
+            transform: translateZ(0);
+            will-change: contents;
+            image-rendering: optimizeSpeed;
+        }
+        
+        /* Keyboard Hints */
+        .hints {
+            margin-top: 10px;
+            padding: 10px 16px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+        .hint-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .hint-group .label {
+            font-size: 11px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .keys {
+            display: flex;
+            gap: 3px;
+        }
+        kbd {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 24px;
+            height: 24px;
+            padding: 0 6px;
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text);
+            background: var(--panel);
+            border: 1px solid var(--border-light);
+            border-radius: 5px;
+            box-shadow: 0 2px 0 var(--border);
+        }
+        
+        /* Joy-Con Panel */
+        .joycon-panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            box-shadow: var(--shadow);
+            flex-shrink: 0;
+        }
+        .joycon-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .joycon-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .joycon-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .joycon-title svg {
+            width: 20px;
+            height: 20px;
+            color: var(--accent);
+        }
+        .joycon-status {
+            display: flex;
+            gap: 12px;
+        }
+        .joycon-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--muted);
+        }
+        .joycon-indicator.connected {
+            color: var(--text);
+            border-color: var(--success);
+        }
+        .joycon-indicator::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--muted);
+        }
+        .joycon-indicator.connected::before {
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+        .joycon-indicator.left { color: #00d4ff; }
+        .joycon-indicator.left::before { background: #00d4ff; }
+        .joycon-indicator.left.connected { border-color: #00d4ff; }
+        .joycon-indicator.left.connected::before { box-shadow: 0 0 8px #00d4ff; }
+        .joycon-indicator.right { color: #ff6b6b; }
+        .joycon-indicator.right::before { background: #ff6b6b; }
+        .joycon-indicator.right.connected { border-color: #ff6b6b; }
+        .joycon-indicator.right.connected::before { box-shadow: 0 0 8px #ff6b6b; }
+        .joycon-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .joycon-data {
+            display: none;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+            font-size: 11px;
+            color: var(--muted);
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        .joycon-data.visible {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        .joycon-arm-state {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 8px 12px;
+        }
+        .joycon-arm-state h4 {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .joycon-arm-state pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <h1>Robot <span class="accent">Teleop</span></h1>
+                <p class="subtitle">Real-time remote control interface</p>
+            </div>
+            <div class="status-bar">
+                <div class="status-pill" id="latency">RTT: -- ms</div>
+                <div class="status-pill" id="status">Not connected</div>
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <div class="control-row">
+                <div class="button-group">
+                    <button id="startButton" onclick="start()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                        Start Stream
+                    </button>
+                    <button id="stopButton" class="secondary" onclick="stop()" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                        Stop
+                    </button>
+                </div>
+                
+                <div class="camera-settings">
+                    <span class="settings-label">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                        Camera
+                    </span>
+                    <div class="setting-item">
+                        <label for="cameraIndexSelect">Index</label>
+                        <select id="cameraIndexSelect"></select>
+                    </div>
+                    <div class="setting-item">
+                        <label for="cameraResSelect">Resolution</label>
+                        <select id="cameraResSelect"></select>
+                    </div>
+                    <div class="setting-item">
+                        <label for="cameraFpsSelect">FPS</label>
+                        <select id="cameraFpsSelect"></select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Joy-Con Panel -->
+        <div class="joycon-panel" id="joyconPanel">
+            <div class="joycon-row">
+                <div class="joycon-left">
+                    <span class="joycon-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16" rx="2"/><rect x="14" y="4" width="4" height="16" rx="2"/><circle cx="8" cy="8" r="1"/><circle cx="16" cy="8" r="1"/></svg>
+                        Joy-Con Arm Control
+                    </span>
+                    <div class="joycon-status">
+                        <div class="joycon-indicator left" id="joyconLeftStatus">Left (L Arm)</div>
+                        <div class="joycon-indicator right" id="joyconRightStatus">Right (R Arm)</div>
+                    </div>
+                </div>
+                <div class="joycon-actions">
+                    <button id="joyconConnectBtn" class="secondary" onclick="connectJoyCons()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                        Connect
+                    </button>
+                    <button id="joyconCalibrateBtn" class="secondary" onclick="calibrateJoyCons()" disabled>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                        Calibrate
+                    </button>
+                    <button id="joyconDisconnectBtn" class="secondary" onclick="disconnectJoyCons()" disabled>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        Disconnect
+                    </button>
+                    <button id="joyconDebugBtn" class="secondary" onclick="toggleJoyConDebug()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                        Debug
+                    </button>
+                </div>
+            </div>
+            <div class="joycon-data" id="joyconData">
+                <div class="joycon-arm-state" id="leftArmState">
+                    <h4>Left Arm (Left Joy-Con)</h4>
+                    <pre id="leftArmData">Not connected</pre>
+                </div>
+                <div class="joycon-arm-state" id="rightArmState">
+                    <h4>Right Arm (Right Joy-Con)</h4>
+                    <pre id="rightArmData">Not connected</pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Video Panel -->
+        <div class="video-panel">
+            <div class="video-container">
+                <video id="video" autoplay playsinline muted></video>
+            </div>
+            <div class="hints">
+                <div class="hint-group">
+                    <span class="label">Drive</span>
+                    <div class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div>
+                </div>
+                <div class="hint-group">
+                    <span class="label">Head</span>
+                    <div class="keys"><kbd>O</kbd><kbd>K</kbd><kbd>L</kbd><kbd>;</kbd></div>
+                </div>
+                <div class="hint-group">
+                    <span class="label">Joy-Con Arms</span>
+                    <span style="font-size: 11px; color: var(--muted);">Hold LT+RT to enable • Stick: X/Y • R/L: Up • Stick Press: Down • A/Down: Gripper • Home/Capture: Reset</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let pc = null;
+        let localStream = null;
+        let controlChannel = null;
+        const video = document.getElementById('video');
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const cameraIndexSelect = document.getElementById('cameraIndexSelect');
+        const cameraResSelect = document.getElementById('cameraResSelect');
+        const cameraFpsSelect = document.getElementById('cameraFpsSelect');
+        const status = document.getElementById('status');
+        const latencyDisplay = document.getElementById('latency');
+
+        // Latency monitoring
+        let statsInterval = null;
+        async function updateLatencyStats() {
+            if (!pc) return;
+            try {
+                const stats = await pc.getStats();
+                stats.forEach(report => {
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                        const rtt = report.currentRoundTripTime;
+                        if (rtt !== undefined) {
+                            const rttMs = Math.round(rtt * 1000);
+                            latencyDisplay.textContent = `RTT: ${rttMs} ms`;
+                            // Color coding for latency quality
+                            if (rtt < 0.1) {
+                                latencyDisplay.style.setProperty('--pill-color', 'var(--success)');
+                            } else if (rtt < 0.2) {
+                                latencyDisplay.style.setProperty('--pill-color', 'var(--warning)');
+                            } else {
+                                latencyDisplay.style.setProperty('--pill-color', 'var(--danger)');
+                            }
+                        }
+                    }
+                });
+            } catch (e) {
+                // Stats not available
+            }
+        }
+        
+        function updateStatus(message, isConnected = false, isError = false) {
+            status.textContent = message;
+            status.classList.remove('connected', 'error');
+            if (isConnected) status.classList.add('connected');
+            if (isError) status.classList.add('error');
+            console.log(message);
+        }
+
+        const RES_OPTS = ['320x240', '640x480', '1280x720', '1920x1080'];
+        const FPS_OPTS = ['15', '30', '60'];
+        async function getRtcConfig() {
+            // Fetch ICE servers (and TURN creds) from the server at runtime.
+            // This keeps credentials out of the repo while still enabling TURN.
+            const resp = await fetch('/api/ice');
+            if (!resp.ok) throw new Error('Failed to load ICE config');
+            const data = await resp.json();
+            return {
+                iceServers: data.iceServers || [],
+                iceCandidatePoolSize: 10,
+                bundlePolicy: 'max-bundle',
+                rtcpMuxPolicy: 'require',
+            };
+        }
+
+        let headPan = 0;
+        let headTilt = 0;
+        let desiredCameraConfig = { index: 0, width: 640, height: 480, fps: 20 };
+        const PAN_STEP = 3;
+        const TILT_STEP = 3;
+        const PAN_LIMIT = 45;
+        const TILT_LIMIT = 45;
+
+        async function start() {
+            // Ensure any previous session is cleaned up before starting a new one.
+            if (pc) {
+                await stop();
+            }
+            startButton.disabled = true;
+            updateStatus('Connecting...');
+
+            try {
+                const rtcConfig = await getRtcConfig();
+                pc = new RTCPeerConnection(rtcConfig);
+            } catch (error) {
+                console.error('ICE config error:', error);
+                updateStatus('ICE config error', false, true);
+                startButton.disabled = false;
+                return;
+            }
+
+            // ICE connection monitoring for auto-recovery
+            pc.addEventListener('iceconnectionstatechange', () => {
+                console.log('ICE connection state:', pc.iceConnectionState);
+                if (pc.iceConnectionState === 'disconnected') {
+                    // Try ICE restart after brief disconnection
+                    console.log('ICE disconnected, will attempt restart if needed...');
+                    setTimeout(() => {
+                        if (pc && pc.iceConnectionState === 'disconnected') {
+                            console.log('Attempting ICE restart...');
+                            pc.restartIce();
+                        }
+                    }, 2000);
+                } else if (pc.iceConnectionState === 'failed') {
+                    console.log('ICE failed, restarting connection...');
+                    pc.restartIce();
+                }
+            });
+
+            // Create Data Channel with ordered=false for lower latency control
+            controlChannel = pc.createDataChannel("control", {
+                ordered: false,  // Allow out-of-order delivery for lower latency
+                maxRetransmits: 0  // No retransmits for real-time control
+            });
+            controlChannel.onopen = () => {
+                updateStatus("Control ready", true);
+                sendCameraConfigIfReady();
+            };
+
+            pc.addTransceiver('video', { direction: 'recvonly' });
+            pc.addTransceiver('audio', { direction: 'sendrecv' });
+
+            // Capture browser microphone
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                for (const track of localStream.getAudioTracks()) {
+                    pc.addTrack(track, localStream);
+                }
+            } catch (err) {
+                console.warn('Mic capture failed:', err);
+            }
+
+            pc.addEventListener('track', (event) => {
+                if (event.track.kind === 'video') {
+                    updateStatus('Streaming', true);
+                    video.srcObject = event.streams[0];
+                    
+                    // Track state monitoring for freeze detection
+                    event.track.onended = () => {
+                        console.warn('Video track ended');
+                        updateStatus('Video ended', false, true);
+                    };
+                    event.track.onmute = () => {
+                        console.warn('Video track muted (possibly frozen)');
+                    };
+                    event.track.onunmute = () => {
+                        console.log('Video track unmuted');
+                    };
+                    
+                    // Low-latency video playback settings
+                    video.playsInline = true;
+                    video.muted = true;  // Muted videos can autoplay
+                    video.disablePictureInPicture = true;
+                    
+                    // Prevent video stalling - catch up to live
+                    video.addEventListener('waiting', () => {
+                        console.log('Video buffering...');
+                    });
+                    video.addEventListener('stalled', () => {
+                        console.warn('Video stalled, attempting recovery...');
+                        // Try to catch up to live edge
+                        if (video.buffered.length > 0) {
+                            const liveEdge = video.buffered.end(video.buffered.length - 1);
+                            if (liveEdge - video.currentTime > 0.5) {
+                                video.currentTime = liveEdge - 0.1;
+                            }
+                        }
+                    });
+                    
+                    const setAspect = () => {
+                        if (video.videoWidth && video.videoHeight) {
+                            video.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+                        }
+                    };
+                    video.onloadedmetadata = () => {
+                        setAspect();
+                        // Start playback immediately
+                        video.play().catch(e => console.warn('Autoplay blocked:', e));
+                        
+                        // Periodic sync to live edge to prevent drift/freeze
+                        setInterval(() => {
+                            if (video.buffered.length > 0 && !video.paused) {
+                                const liveEdge = video.buffered.end(video.buffered.length - 1);
+                                const lag = liveEdge - video.currentTime;
+                                // If more than 0.5s behind, jump to live
+                                if (lag > 0.5) {
+                                    console.log(`Syncing to live (lag: ${lag.toFixed(2)}s)`);
+                                    video.currentTime = liveEdge - 0.05;
+                                }
+                            }
+                        }, 2000);
+                    };
+                    // In case metadata already available
+                    setAspect();
+                } else if (event.track.kind === 'audio') {
+                    const remoteAudio = new Audio();
+                    remoteAudio.srcObject = event.streams[0];
+                    remoteAudio.autoplay = true;
+                }
+            });
+
+            pc.addEventListener('connectionstatechange', () => {
+                const state = pc.connectionState;
+                if (state === 'connected') {
+                    updateStatus('Connected', true);
+                    stopButton.disabled = false;
+                    // Start latency monitoring
+                    if (statsInterval) clearInterval(statsInterval);
+                    statsInterval = setInterval(updateLatencyStats, 1000);
+                } else if (state === 'connecting') {
+                    updateStatus('Connecting...');
+                } else if (state === 'failed') {
+                    updateStatus('Connection failed', false, true);
+                    if (statsInterval) {
+                        clearInterval(statsInterval);
+                        statsInterval = null;
+                    }
+                    latencyDisplay.textContent = 'RTT: -- ms';
+                } else if (state === 'closed' || state === 'disconnected') {
+                    updateStatus('Disconnected');
+                    if (statsInterval) {
+                        clearInterval(statsInterval);
+                        statsInterval = null;
+                    }
+                    latencyDisplay.textContent = 'RTT: -- ms';
+                }
+            });
+
+            // Function to optimize SDP for low latency
+            function optimizeSdpForLowLatency(sdp) {
+                let lines = sdp.split('\r\n');
+                let result = [];
+                
+                for (let i = 0; i < lines.length; i++) {
+                    let line = lines[i];
+                    result.push(line);
+                    
+                    // After video media line, add bandwidth constraints
+                    if (line.startsWith('m=video')) {
+                        // 2.5 Mbps allows good quality 640x480 video
+                        result.push('b=AS:2500');
+                    }
+                }
+                
+                return result.join('\r\n');
+            }
+
+            const offer = await pc.createOffer();
+            // Optimize SDP for low latency
+            offer.sdp = optimizeSdpForLowLatency(offer.sdp);
+            await pc.setLocalDescription(offer);
+
+            try {
+                const response = await fetch('/offer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sdp: pc.localDescription.sdp,
+                        type: pc.localDescription.type,
+                    }),
+                });
+
+                const answer = await response.json();
+                await pc.setRemoteDescription(answer);
+            } catch (error) {
+                updateStatus('Connection error', false, true);
+                startButton.disabled = false;
+            }
+        }
+
+        async function stop() {
+            stopButton.disabled = true;
+            // Stop latency monitoring
+            if (statsInterval) {
+                clearInterval(statsInterval);
+                statsInterval = null;
+            }
+            latencyDisplay.textContent = 'RTT: -- ms';
+            
+            if (pc) {
+                try {
+                    pc.close();
+                } catch (err) {
+                    console.warn('Error closing peer connection:', err);
+                }
+                pc = null;
+                controlChannel = null;
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(t => t.stop());
+                localStream = null;
+            }
+            video.srcObject = null;
+            updateStatus('Not connected');
+            startButton.disabled = false;
+        }
+
+        function clamp(value, min, max) {
+            return Math.min(Math.max(value, min), max);
+        }
+
+        function sendCommand(data) {
+            if (controlChannel && controlChannel.readyState === 'open') {
+                controlChannel.send(JSON.stringify(data));
+            }
+        }
+
+        let availableCameras = [];
+
+        async function fetchAvailableCameras() {
+            try {
+                const response = await fetch('/api/cameras');
+                const data = await response.json();
+                if (data.cameras && data.cameras.length > 0) {
+                    availableCameras = data.cameras;
+                    populateCameraSelect();
+                }
+            } catch (e) {
+                console.error('Failed to fetch cameras:', e);
+            }
+        }
+
+        function populateCameraSelect() {
+            const camOptions = availableCameras.length > 0 ? availableCameras : Array.from({ length: 8 }, (_, i) => i);
+            cameraIndexSelect.innerHTML = '';
+            camOptions.forEach((val) => {
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = val.toString();
+                cameraIndexSelect.appendChild(opt);
+            });
+            // Set to first available camera if current selection is not available
+            if (!camOptions.includes(desiredCameraConfig.index) && camOptions.length > 0) {
+                desiredCameraConfig.index = camOptions[0];
+            }
+            cameraIndexSelect.value = desiredCameraConfig.index.toString();
+        }
+
+        function populateSelects() {
+            populateCameraSelect();
+
+            const resOptions = ['320x240', '640x480', '1280x720', '1920x1080'];
+            cameraResSelect.innerHTML = '';
+            resOptions.forEach((val) => {
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = val;
+                cameraResSelect.appendChild(opt);
+            });
+            cameraResSelect.value = `${desiredCameraConfig.width}x${desiredCameraConfig.height}`;
+
+            const fpsOptions = ['15', '20', '30', '60'];
+            cameraFpsSelect.innerHTML = '';
+            fpsOptions.forEach((val) => {
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = `${val} fps`;
+                cameraFpsSelect.appendChild(opt);
+            });
+            cameraFpsSelect.value = desiredCameraConfig.fps.toString();
+        }
+
+        function sendCameraConfigIfReady() {
+            if (controlChannel && controlChannel.readyState === 'open') {
+                sendCommand({
+                    camera_config: {
+                        index: desiredCameraConfig.index,
+                        width: desiredCameraConfig.width,
+                        height: desiredCameraConfig.height,
+                        fps: desiredCameraConfig.fps,
+                    },
+                });
+            }
+        }
+
+        // Initialize: populate selects, then fetch available cameras
+        populateSelects();
+        fetchAvailableCameras();
+        // Poll for camera updates periodically (robot might connect later)
+        setInterval(fetchAvailableCameras, 5000);
+
+        function updateDesiredCameraConfig() {
+            const [w, h] = (cameraResSelect.value || '640x480').split('x').map((n) => parseInt(n, 10));
+            desiredCameraConfig = {
+                index: parseInt(cameraIndexSelect.value, 10) || 0,
+                width: w || 640,
+                height: h || 480,
+                fps: parseInt(cameraFpsSelect.value, 10) || 20,
+            };
+            sendCameraConfigIfReady();
+        }
+
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+
+            // Prevent repeat events from held keys for head control
+            if (e.repeat) {
+                // Allow base control repeats but skip head control repeats
+                if (['o', 'k', 'l', ';'].includes(key)) {
+                    return;
+                }
+            }
+
+            // Head control: O/K/L/; keys adjust pan/tilt
+            // O = down (tilt-), L = up (tilt+), K = left (pan-), ; = right (pan+)
+            let headChanged = false;
+            if (key === 'k') {
+                headPan = clamp(headPan - PAN_STEP, -PAN_LIMIT, PAN_LIMIT);
+                headChanged = true;
+            } else if (key === ';') {
+                headPan = clamp(headPan + PAN_STEP, -PAN_LIMIT, PAN_LIMIT);
+                headChanged = true;
+            } else if (key === 'l') {
+                headTilt = clamp(headTilt + TILT_STEP, -TILT_LIMIT, TILT_LIMIT);
+                headChanged = true;
+            } else if (key === 'o') {
+                headTilt = clamp(headTilt - TILT_STEP, -TILT_LIMIT, TILT_LIMIT);
+                headChanged = true;
+            }
+
+            if (headChanged) {
+                sendCommand({ pan: headPan, tilt: headTilt });
+            }
+
+            // Base control: WASD for forward/back and rotation
+            let x = 0;
+            let y = 0;
+            let theta = 0;
+            const BASE_X_STEP = 0.35;
+            const BASE_THETA_STEP = 120;
+
+            if (key === 'w') x = BASE_X_STEP;
+            else if (key === 's') x = -BASE_X_STEP;
+            else if (key === 'a') theta = BASE_THETA_STEP;
+            else if (key === 'd') theta = -BASE_THETA_STEP;
+
+            if (x !== 0 || theta !== 0) {
+                sendCommand({ x, y, theta });
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+             const key = e.key.toLowerCase();
+             if (['w', 'a', 's', 'd'].includes(key)) {
+                 sendCommand({ x: 0, y: 0, theta: 0 });
+             }
+        });
+
+        cameraIndexSelect.addEventListener('change', updateDesiredCameraConfig);
+        cameraResSelect.addEventListener('change', updateDesiredCameraConfig);
+        cameraFpsSelect.addEventListener('change', updateDesiredCameraConfig);
+
+        // ============================================
+        // Joy-Con WebHID Integration
+        // ============================================
+        
+        let joyconManager = null;
+        let joyconDebugVisible = false;
+        
+        // Check WebHID support on load
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!isWebHIDSupported()) {
+                const panel = document.getElementById('joyconPanel');
+                panel.innerHTML = `
+                    <div class="joycon-row">
+                        <span class="joycon-title" style="color: var(--warning);">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                            WebHID not supported
+                        </span>
+                        <span style="font-size: 12px; color: var(--muted);">
+                            Joy-Con control requires Chrome/Edge with WebHID support. Make sure you're using HTTPS.
+                        </span>
+                    </div>
+                `;
+            } else {
+                joyconManager = new JoyConManager();
+                
+                // Set up state update callback for debug display
+                joyconManager.onStateUpdate = (state) => {
+                    if (joyconDebugVisible) {
+                        updateJoyConDebugDisplay(state);
+                    }
+                };
+            }
+        });
+        
+        async function connectJoyCons() {
+            if (!joyconManager) return;
+            
+            const connectBtn = document.getElementById('joyconConnectBtn');
+            connectBtn.disabled = true;
+            connectBtn.textContent = 'Connecting...';
+            
+            try {
+                const success = await joyconManager.requestDevice('any');
+                
+                if (success) {
+                    updateJoyConStatus();
+                    
+                    // Enable calibrate and disconnect buttons
+                    document.getElementById('joyconCalibrateBtn').disabled = false;
+                    document.getElementById('joyconDisconnectBtn').disabled = false;
+                    
+                    // Start sending arm commands if stream is active
+                    if (controlChannel && controlChannel.readyState === 'open') {
+                        joyconManager.startSending(sendCommand);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to connect Joy-Cons:', error);
+            }
+            
+            connectBtn.disabled = false;
+            connectBtn.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                Connect
+            `;
+        }
+        
+        function calibrateJoyCons() {
+            if (joyconManager) {
+                joyconManager.calibrate();
+                
+                // Visual feedback
+                const btn = document.getElementById('joyconCalibrateBtn');
+                btn.textContent = 'Calibrated!';
+                setTimeout(() => {
+                    btn.innerHTML = `
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                        Calibrate
+                    `;
+                }, 1000);
+            }
+        }
+        
+        async function disconnectJoyCons() {
+            if (joyconManager) {
+                await joyconManager.disconnectAll();
+                updateJoyConStatus();
+                
+                document.getElementById('joyconCalibrateBtn').disabled = true;
+                document.getElementById('joyconDisconnectBtn').disabled = true;
+            }
+        }
+        
+        function toggleJoyConDebug() {
+            joyconDebugVisible = !joyconDebugVisible;
+            const dataPanel = document.getElementById('joyconData');
+            dataPanel.classList.toggle('visible', joyconDebugVisible);
+            
+            const btn = document.getElementById('joyconDebugBtn');
+            btn.classList.toggle('active', joyconDebugVisible);
+        }
+        
+        function updateJoyConStatus() {
+            const leftStatus = document.getElementById('joyconLeftStatus');
+            const rightStatus = document.getElementById('joyconRightStatus');
+            
+            if (joyconManager) {
+                if (joyconManager.isLeftConnected()) {
+                    leftStatus.classList.add('connected');
+                    leftStatus.textContent = 'Left ✓ (L Arm)';
+                } else {
+                    leftStatus.classList.remove('connected');
+                    leftStatus.textContent = 'Left (L Arm)';
+                }
+                
+                if (joyconManager.isRightConnected()) {
+                    rightStatus.classList.add('connected');
+                    rightStatus.textContent = 'Right ✓ (R Arm)';
+                } else {
+                    rightStatus.classList.remove('connected');
+                    rightStatus.textContent = 'Right (R Arm)';
+                }
+            }
+        }
+        
+        function updateJoyConDebugDisplay(state) {
+            const elementId = state.side === 'left' ? 'leftArmData' : 'rightArmData';
+            const element = document.getElementById(elementId);
+            
+            if (element) {
+                const pos = state.position;
+                const ori = state.orientation;
+                element.textContent = [
+                    `Pos: X=${pos.x.toFixed(3)} Y=${pos.y.toFixed(3)} Z=${pos.z.toFixed(3)}`,
+                    `Ori: R=${(ori.roll * 180/Math.PI).toFixed(1)}° P=${(ori.pitch * 180/Math.PI).toFixed(1)}° Y=${(ori.yaw * 180/Math.PI).toFixed(1)}°`,
+                    `Gripper: ${(state.gripper * 100).toFixed(0)}%`,
+                    `Stick: H=${state.stick.horizontal} V=${state.stick.vertical}`,
+                ].join('\n');
+            }
+        }
+        
+        // Hook into stream start/stop to manage Joy-Con sending
+        const originalStart = start;
+        start = async function() {
+            await originalStart();
+            
+            // Wait a bit for control channel to be ready, then start Joy-Con sending
+            setTimeout(() => {
+                if (joyconManager && (joyconManager.isLeftConnected() || joyconManager.isRightConnected())) {
+                    if (controlChannel && controlChannel.readyState === 'open') {
+                        joyconManager.startSending(sendCommand);
+                    }
+                }
+            }, 1000);
+        };
+        
+        const originalStop = stop;
+        stop = async function() {
+            if (joyconManager) {
+                joyconManager.stopSending();
+            }
+            await originalStop();
+        };
+    </script>
+</body>
+</html>

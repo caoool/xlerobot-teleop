@@ -1,0 +1,60 @@
+services:
+  # WebRTC Signaling Server
+  teleop-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: teleop-server
+    restart: unless-stopped
+    ports:
+      - "80:8080"     # HTTP (redirect to HTTPS or for health checks)
+      - "443:443"     # HTTPS
+    environment:
+      - HOST=0.0.0.0
+      - PORT=443
+      - SSL_CERT_FILE=/certs/fullchain.pem
+      - SSL_KEY_FILE=/certs/privkey.pem
+    env_file:
+      - .env
+    volumes:
+      # Mount Let's Encrypt SSL certificates
+      - ./certs:/certs:ro
+      # Optional: mount static files for live updates during development
+      - ./src/server/static:/app/src/server/static:ro
+    networks:
+      - teleop-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/login')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Certbot for SSL certificate renewal (optional, for auto-renewal)
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    volumes:
+      - ./certs:/etc/letsencrypt
+      - ./certs/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    profiles:
+      - renewal  # Only run with: docker compose --profile renewal up
+
+  # TURN/STUN Server (coturn) - Optional, run on same machine
+  coturn:
+    image: coturn/coturn:latest
+    container_name: coturn
+    restart: unless-stopped
+    network_mode: host  # Required for TURN to work properly with real IPs
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+    env_file:
+      - .env
+    command: ["turnserver", "-c", "/etc/coturn/turnserver.conf", "--user=${TURN_USER}:${TURN_PASS}"]
+    # Note: coturn needs host networking for proper NAT traversal
+    # Ports used: 3478 (STUN/TURN), 5349 (TURN TLS), 49152-65535 (relay)
+
+networks:
+  teleop-net:
+    driver: bridge
