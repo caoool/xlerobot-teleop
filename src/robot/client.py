@@ -39,10 +39,10 @@ from robot.controller import Controller
 logger = logging.getLogger(__name__)
 
 DISABLE_AUDIO = os.getenv("ROBOT_DISABLE_AUDIO") == "1"
-AUDIO_LATENCY_MS = int(
-    os.getenv("ROBOT_AUDIO_LATENCY_MS", "10")
-)  # Reduced for lower latency
-AUDIO_PTIME_MS = int(os.getenv("ROBOT_AUDIO_PTIME_MS", "10"))  # Smaller packets
+# Audio buffer/latency settings - larger values = smoother but more latency
+# 50ms provides good balance between latency and jitter resistance
+AUDIO_LATENCY_MS = int(os.getenv("ROBOT_AUDIO_LATENCY_MS", "50"))
+AUDIO_PTIME_MS = int(os.getenv("ROBOT_AUDIO_PTIME_MS", "20"))  # 20ms is Opus default
 # Use Opus-native rate by default; 8k sounds extremely muffled.
 AUDIO_RATE = os.getenv("ROBOT_AUDIO_RATE", "48000")
 AUDIO_CHANNELS = os.getenv("ROBOT_AUDIO_CHANNELS", "1")
@@ -118,7 +118,9 @@ def _open_media_player(kind: str) -> Optional[MediaPlayer]:
         "audio_buffer_size": str(AUDIO_LATENCY_MS),
         "sample_rate": AUDIO_RATE,
         "channels": AUDIO_CHANNELS,
-        "thread_queue_size": "512",  # Smaller queue for lower latency
+        "thread_queue_size": "1024",  # Larger queue for smoother audio
+        "fflags": "nobuffer",  # Reduce FFmpeg internal buffering
+        "flags": "low_delay",  # Low delay mode
     }
 
     for device, fmt, label in attempts:

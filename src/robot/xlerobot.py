@@ -55,9 +55,9 @@ class XLerobot(Robot):
         self.teleop_keys = config.teleop_keys
         # Define three speed levels and a current index
         self.speed_levels = [
-            {"xy": 0.1, "theta": 30},  # slow
-            {"xy": 0.2, "theta": 60},  # medium
-            {"xy": 0.3, "theta": 90},  # fast
+            {"xy": 0.2, "theta": 60},  # slow
+            {"xy": 0.4, "theta": 120},  # medium
+            {"xy": 0.6, "theta": 180},  # fast
         ]
         self.speed_index = 0  # Start at slow
         norm_mode_body = (

@@ -655,6 +655,7 @@
                         autoGainControl: true,
                         channelCount: 1,
                         sampleRate: 48000,
+                        latency: 0.05,  // 50ms latency for smoother capture
                     },
                     video: false
                 });
@@ -739,7 +740,23 @@
                     const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
                     remoteAudioEl.srcObject = stream;
                     remoteAudioEl.muted = false;
-                    remoteAudioEl.play().catch(e => console.warn('Audio play blocked:', e));
+                    // Use AudioContext for smoother playback with jitter buffer
+                    try {
+                        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+                            latencyHint: 'interactive',  // Balance between latency and smoothness
+                            sampleRate: 48000
+                        });
+                        const source = audioCtx.createMediaStreamSource(stream);
+                        // Add a small delay node to smooth out jitter
+                        const delayNode = audioCtx.createDelay(0.1);  // Max 100ms buffer
+                        delayNode.delayTime.value = 0.05;  // 50ms jitter buffer
+                        source.connect(delayNode);
+                        delayNode.connect(audioCtx.destination);
+                        console.log('Audio jitter buffer enabled (50ms)');
+                    } catch (audioCtxErr) {
+                        console.warn('AudioContext failed, using direct playback:', audioCtxErr);
+                        remoteAudioEl.play().catch(e => console.warn('Audio play blocked:', e));
+                    }
                 }
             });
 
@@ -941,6 +958,24 @@
             sendCameraConfigIfReady();
         }
 
+        // Track currently pressed keys for base control
+        const pressedKeys = new Set();
+        const BASE_X_STEP = 0.35;
+        const BASE_THETA_STEP = 120;
+
+        function updateBaseMovement() {
+            let x = 0;
+            let y = 0;
+            let theta = 0;
+
+            if (pressedKeys.has('w')) x += BASE_X_STEP;
+            if (pressedKeys.has('s')) x -= BASE_X_STEP;
+            if (pressedKeys.has('a')) theta += BASE_THETA_STEP;
+            if (pressedKeys.has('d')) theta -= BASE_THETA_STEP;
+
+            sendCommand({ x, y, theta });
+        }
+
         window.addEventListener('keydown', (e) => {
             const key = e.key.toLowerCase();
 
@@ -974,26 +1009,17 @@
             }
 
             // Base control: WASD for forward/back and rotation
-            let x = 0;
-            let y = 0;
-            let theta = 0;
-            const BASE_X_STEP = 0.35;
-            const BASE_THETA_STEP = 120;
-
-            if (key === 'w') x = BASE_X_STEP;
-            else if (key === 's') x = -BASE_X_STEP;
-            else if (key === 'a') theta = BASE_THETA_STEP;
-            else if (key === 'd') theta = -BASE_THETA_STEP;
-
-            if (x !== 0 || theta !== 0) {
-                sendCommand({ x, y, theta });
+            if (['w', 'a', 's', 'd'].includes(key)) {
+                pressedKeys.add(key);
+                updateBaseMovement();
             }
         });
 
         window.addEventListener('keyup', (e) => {
              const key = e.key.toLowerCase();
              if (['w', 'a', 's', 'd'].includes(key)) {
-                 sendCommand({ x: 0, y: 0, theta: 0 });
+                 pressedKeys.delete(key);
+                 updateBaseMovement();
              }
         });
 
