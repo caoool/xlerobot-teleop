@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -380,16 +381,52 @@ async def handle_user_offer(request: web.Request) -> web.Response:
         pc.addTrack(relay.subscribe(robot_audio_track, buffered=False))
         logger.info("Added robot audio track to user (unbuffered)")
 
+    async def _forward_user_audio_to_robot(user_audio_track: MediaStreamTrack):
+        """Forward the browser mic track to the robot peer connection.
+
+        Note: aiortc's RTCRtpSender does not expose a `.kind` attribute.
+        We must pick the audio transceiver sender (preferred) or a sender whose
+        current track is audio.
+        """
+        global robot_pc
+        if not robot_pc:
+            return
+
+        # Prefer the robot audio transceiver sender (works even if sender.track is None).
+        for transceiver in robot_pc.getTransceivers():
+            if transceiver.kind == "audio":
+                try:
+                    await transceiver.sender.replaceTrack(user_audio_track)
+                    logger.info(
+                        "Forwarded user audio track to robot (audio transceiver)"
+                    )
+                    return
+                except Exception:
+                    logger.exception(
+                        "Failed to replace robot audio track on transceiver"
+                    )
+                    return
+
+        # Fallback: search senders with an existing audio track.
+        for sender in robot_pc.getSenders():
+            if sender.track and sender.track.kind == "audio":
+                try:
+                    await sender.replaceTrack(user_audio_track)
+                    logger.info("Forwarded user audio track to robot (audio sender)")
+                except Exception:
+                    logger.exception("Failed to replace robot audio track on sender")
+                return
+
+        logger.warning(
+            "No robot audio sender/transceiver available to forward user audio"
+        )
+
     # Handle User Audio (to send to Robot)
     @pc.on("track")
     def on_track(track):
-        if track.kind == "audio" and robot_pc:
-            logger.info("Received user audio track, forwarding to robot")
-            # Find the sender on robot_pc that sends audio
-            for sender in robot_pc.getSenders():
-                if sender.kind == "audio":
-                    sender.replaceTrack(track)
-                    break
+        if track.kind == "audio":
+            logger.info("Received user audio track")
+            asyncio.ensure_future(_forward_user_audio_to_robot(track))
 
     # Handle User Control (Data Channel)
     @pc.on("datachannel")

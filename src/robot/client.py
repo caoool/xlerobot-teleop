@@ -43,7 +43,8 @@ AUDIO_LATENCY_MS = int(
     os.getenv("ROBOT_AUDIO_LATENCY_MS", "10")
 )  # Reduced for lower latency
 AUDIO_PTIME_MS = int(os.getenv("ROBOT_AUDIO_PTIME_MS", "10"))  # Smaller packets
-AUDIO_RATE = os.getenv("ROBOT_AUDIO_RATE", "8000")
+# Use Opus-native rate by default; 8k sounds extremely muffled.
+AUDIO_RATE = os.getenv("ROBOT_AUDIO_RATE", "48000")
 AUDIO_CHANNELS = os.getenv("ROBOT_AUDIO_CHANNELS", "1")
 
 # Low-latency tuning constants
@@ -476,14 +477,15 @@ class RobustRobotClient:
         else:
             logger.error("No video track available")
 
-        # Add audio track
+        # Audio: always create a transceiver that can RECEIVE (speaker) and optionally SEND (mic).
+        # Without an audio transceiver offering recv, the robot cannot receive user audio.
+        audio_transceiver = self.pc.addTransceiver("audio", direction="sendrecv")
         self.audio_player = _open_media_player("input")
         if self.audio_player and self.audio_player.audio:
-            self.pc.addTrack(self.audio_player.audio)
-            logger.info("Added audio track (mic)")
+            await audio_transceiver.sender.replaceTrack(self.audio_player.audio)
+            logger.info("Audio transceiver ready (sendrecv) with mic")
         else:
-            self.pc.addTransceiver("audio", direction="recvonly")
-            logger.info("Added audio transceiver (recvonly)")
+            logger.info("Audio transceiver ready (sendrecv) without mic")
 
         # Create control data channel
         control_channel = self.pc.createDataChannel(

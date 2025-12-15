@@ -527,6 +527,7 @@
         let pc = null;
         let localStream = null;
         let controlChannel = null;
+        let remoteAudioEl = null;
         const video = document.getElementById('video');
         const startButton = document.getElementById('startButton');
         const stopButton = document.getElementById('stopButton');
@@ -647,7 +648,16 @@
 
             // Capture browser microphone
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        channelCount: 1,
+                        sampleRate: 48000,
+                    },
+                    video: false
+                });
                 for (const track of localStream.getAudioTracks()) {
                     pc.addTrack(track, localStream);
                 }
@@ -718,9 +728,18 @@
                     // In case metadata already available
                     setAspect();
                 } else if (event.track.kind === 'audio') {
-                    const remoteAudio = new Audio();
-                    remoteAudio.srcObject = event.streams[0];
-                    remoteAudio.autoplay = true;
+                    if (!remoteAudioEl) {
+                        remoteAudioEl = document.createElement('audio');
+                        remoteAudioEl.autoplay = true;
+                        remoteAudioEl.playsInline = true;
+                        remoteAudioEl.controls = false;
+                        remoteAudioEl.style.display = 'none';
+                        document.body.appendChild(remoteAudioEl);
+                    }
+                    const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
+                    remoteAudioEl.srcObject = stream;
+                    remoteAudioEl.muted = false;
+                    remoteAudioEl.play().catch(e => console.warn('Audio play blocked:', e));
                 }
             });
 
@@ -814,6 +833,13 @@
             if (localStream) {
                 localStream.getTracks().forEach(t => t.stop());
                 localStream = null;
+            }
+            if (remoteAudioEl) {
+                try {
+                    remoteAudioEl.srcObject = null;
+                } catch (e) {
+                    // ignore
+                }
             }
             video.srcObject = null;
             updateStatus('Not connected');
